@@ -88,7 +88,6 @@ ret_code_t fds_write(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t
 		{
 				return ret;
 		}
-		nrf_delay_ms(1500);
 		SEGGER_RTT_printf(0,"Wrote recordID:%d \r\n",record_desc.record_id);
 		return NRF_SUCCESS;
 }

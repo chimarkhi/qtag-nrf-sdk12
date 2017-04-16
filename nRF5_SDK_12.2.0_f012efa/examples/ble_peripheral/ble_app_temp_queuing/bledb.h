@@ -7,9 +7,9 @@
 #include "ble_nus.h"
 #include "main.h"
 
-#define FILE_ID 		0x1111
-#define REC_KEY_START     0x2222
-
+#define FILE_ID 				0x1111
+#define REC_KEY_START     		0x2222
+#define WORDLEN_DATAPACKET		3
 /**@brief   Data type fed to DB
  *
  * @note    

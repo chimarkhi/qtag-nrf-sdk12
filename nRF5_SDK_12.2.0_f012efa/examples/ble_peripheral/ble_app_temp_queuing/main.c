@@ -77,23 +77,17 @@
 #define ADVIINTERVAL_LOGDINTERVAL_RATIO	1
 #define ADV_TIMEOUT_IN_SECONDS      180                               /**< The advertising timeout (in units of seconds). */
 
-#define APP_BEACON_INFO_LENGTH          0x17                              /**< Total length of information advertised by the Beacon. */
-#define APP_ADV_DATA_LENGTH             0x15                              /**< Length of manufacturer specific data in the advertisement. */
-#define APP_DEVICE_TYPE                 0x02                              /**< 0x02 refers to Beacon. */
-#define APP_MEASURED_RSSI               0xC3                              /**< The Beacon's measured RSSI at 1 meter distance in dBm. */
-#define APP_COMPANY_IDENTIFIER          0x0059                            /**< Company identifier for Nordic Semiconductor ASA. as per www.bluetooth.org. */
-#define APP_MAJOR_VALUE                 0x01, 0x02                        /**< Major value used to identify Beacons. */
-#define APP_MINOR_VALUE                 0x03, 0x04                        /**< Minor value used to identify Beacons. */
-#define APP_BEACON_UUID                 0x01, 0x12, 0x23, 0x34, \
-                                        0x45, 0x56, 0x67, 0x78, \
-                                        0x89, 0x9a, 0xab, 0xbc, \
-                                        0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-#define DEVICE_NAME											"XT002"
+#define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
+#define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
+#define APP_COMPANY_IDENTIFIER          0x128B                            /**< Company identifier for TagBox */
+#define APP_BEACON_UUID                 0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
+#define DEVICE_NAME											"XT0002"
 #define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN        /**< UUID type for the Nordic UART Service (vendor specific). */
 #define DOOR_STATUS_SERVICE_UUID				0xABCD
 #define UNIXTIME_SERVICE_UUID						0xAB01
 #define HUMIDITY_SERVICE_UUID						0xAB02
 #define RECKEY_SERVICE_UUID							0xAB03
+#define DATAPACKET_UUID									0xAB04
 
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(20, UNIT_1_25_MS)            /**< Minimum acceptable connection interval (0.4 seconds). */
 #define MAX_CONN_INTERVAL               MSEC_TO_UNITS(75, UNIT_1_25_MS)            /**< Maximum acceptable connection interval (0.65 second). */
@@ -113,7 +107,6 @@
 #define UART_TX_BUF_SIZE                256                                         /**< UART TX buffer size. */
 #define UART_RX_BUF_SIZE                256                                         /**< UART RX buffer size. */
 
-
 static ble_nus_t                        m_nus;                                      /**< Structure to identify the Nordic UART Service. */
 static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
 
@@ -123,18 +116,10 @@ time_t tstamp_sec;
 static ble_gap_adv_params_t m_adv_params;                                 /**< Parameters to be passed to the stack when starting advertising. */
 static uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH] =                    /**< Information advertised by the Beacon. */
 {
-    APP_DEVICE_TYPE,     // Manufacturer specific information. Specifies the device type in this
-                         // implementation.
     APP_ADV_DATA_LENGTH, // Manufacturer specific information. Specifies the length of the
                          // manufacturer specific data in this implementation.
-    APP_BEACON_UUID,     // 128 bit UUID value.
-    APP_MAJOR_VALUE,     // Major arbitrary value that can be used to distinguish between Beacons.
-    APP_MINOR_VALUE,     // Minor arbitrary value that can be used to distinguish between Beacons.
-    APP_MEASURED_RSSI    // Manufacturer specific information. The Beacon's measured TX power in
-                         // this implementation.
 };
 
-static uint8_t m_beacon_info_test[3] = {0xAB,0x12,0x98};
 
 APP_TIMER_DEF(m_advdata_update_timer);
 APP_TIMER_DEF(m_dataToDB_timer);
@@ -193,24 +178,28 @@ static void advdata_update(void)
     uint32_t      err_code;
     ble_advdata_t advdata;
     uint8_t       flags = BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED;
-    uint8_t		  door_status = 0x00;
 
-    ble_advdata_service_data_t service_data[4];
+    ble_advdata_service_data_t service_data[1];
+		
+		uint16_t temp 			 	= temperature_data_get();
+		uint16_t humid 				= humid_data_get();
+		uint16_t timeStamp[2] = {(uint16_t)(tstamp_sec>>16),(uint16_t)tstamp_sec};
+		uint16_t recKey 	 		= get_recKey();
 	
-//		uint8_t battery_data = battery_level_get();
-    uint8_t battery_data = 0x63;
-    uint16_t temperature_data = temperature_data_get();
-    uint16_t humid_data = humid_data_get();
-		uint16_t recKey_data = get_recKey();
+		uint16_t dataPacket[2*WORDLEN_DATAPACKET] = {APP_COMPANY_IDENTIFIER, recKey,
+													 timeStamp[0], timeStamp[1],
+													 temp,  			 humid};	
 	
-		service_data[0].service_uuid = UNIXTIME_SERVICE_UUID;
-    service_data[0].data.size    = sizeof(tstamp_sec);
-    service_data[0].data.p_data  = (uint8_t *) &tstamp_sec;
+		service_data[0].service_uuid = DATAPACKET_UUID;
+    service_data[0].data.size    = 4*WORDLEN_DATAPACKET;
+    service_data[0].data.p_data  = (uint8_t *) &dataPacket;
 
-    service_data[1].service_uuid = BLE_UUID_HEALTH_THERMOMETER_SERVICE;
-    service_data[1].data.size    = sizeof(temperature_data);
-    service_data[1].data.p_data  = (uint8_t *) &temperature_data;
+/*
+    service_data[0].service_uuid = BLE_UUID_HEALTH_THERMOMETER_SERVICE;
+    service_data[0].data.size    = sizeof(temp);
+    service_data[0].data.p_data  = (uint8_t *) &temp;
 
+													 
     service_data[2].service_uuid = HUMIDITY_SERVICE_UUID;
     service_data[2].data.size    = sizeof(humid_data);
     service_data[2].data.p_data  = (uint8_t *) &humid_data;
@@ -218,6 +207,7 @@ static void advdata_update(void)
     service_data[2].service_uuid = RECKEY_SERVICE_UUID;
     service_data[2].data.size    = sizeof(recKey_data);
     service_data[2].data.p_data  = (uint8_t *) &recKey_data;
+*/
 
 
     // Build and set advertising data
@@ -225,21 +215,19 @@ static void advdata_update(void)
 
     ble_advdata_manuf_data_t manuf_specific_data;
 
-    manuf_specific_data.company_identifier = APP_COMPANY_IDENTIFIER;
+//    manuf_specific_data.company_identifier = APP_COMPANY_IDENTIFIER;
 
-    uint8_t test[] = {0x12};
-    manuf_specific_data.data.p_data = test;
-    manuf_specific_data.data.size   = 1;
+//    manuf_specific_data.data.p_data = (uint8_t *)m_beacon_info;
 //    manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
 
-    advdata.include_appearance  		 = false;
-	advdata.name_type               = BLE_ADVDATA_SHORT_NAME;
-	advdata.short_name_len					= 5;
-    advdata.p_manuf_specific_data = &manuf_specific_data;
+    advdata.include_appearance  		= false;
+		advdata.name_type               = BLE_ADVDATA_SHORT_NAME;
+		advdata.short_name_len					= 6;
+//    advdata.p_manuf_specific_data 	= &manuf_specific_data;
 
-    advdata.flags		         = flags;
-    advdata.service_data_count   = 1;
-    advdata.p_service_data_array = service_data;
+    advdata.flags		         				= flags;
+    advdata.service_data_count   		= 1;
+    advdata.p_service_data_array 		= service_data;
 
     err_code = ble_advdata_set(&advdata, NULL);
     SEGGER_RTT_printf(0,"adv set err: %d\r\n",err_code);
@@ -264,21 +252,22 @@ void tstamp_init()
 		tstamp_sec = 0x0;
 }
 
+
 void dataToDB_timer_timeout_handler(void * p_context)
 {
 	time_t date_hour_seconds = tstamp_sec;
-	//db_data_t data;
 	
 	uint16_t temp =  temperature_data_get();
 	uint16_t humid = humid_data_get();
 	uint32_t timeStamp = date_hour_seconds;
 	uint32_t recKey = get_recKey();
 	
-	uint32_t dataPacket_global[3] = {recKey,
+	uint32_t dataPacket[WORDLEN_DATAPACKET] = {recKey,
 													 timeStamp,
 													 (temp << 16) | humid};	
-	SEGGER_RTT_printf(0,"RecKey : %08x, time: %08x, data : %08x, len: %d\r\n", dataPacket_global[0], dataPacket_global[1], dataPacket_global[2], 3);
-	uint32_t err_code = fds_write(FILE_ID, recKey, dataPacket_global, 3);
+	
+	SEGGER_RTT_printf(0,"RecKey : %08x, time: %08x, data : %08x, len: %d\r\n", dataPacket[0], dataPacket[1], dataPacket[2], 3);
+	uint32_t err_code = fds_write(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
 	APP_ERROR_CHECK(err_code);
 }
 
