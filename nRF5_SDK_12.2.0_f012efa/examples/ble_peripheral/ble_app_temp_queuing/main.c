@@ -194,20 +194,6 @@ static void advdata_update(void)
     service_data[0].data.size    = 4*WORDLEN_DATAPACKET;
     service_data[0].data.p_data  = (uint8_t *) &dataPacket;
 
-/*
-    service_data[0].service_uuid = BLE_UUID_HEALTH_THERMOMETER_SERVICE;
-    service_data[0].data.size    = sizeof(temp);
-    service_data[0].data.p_data  = (uint8_t *) &temp;
-
-													 
-    service_data[2].service_uuid = HUMIDITY_SERVICE_UUID;
-    service_data[2].data.size    = sizeof(humid_data);
-    service_data[2].data.p_data  = (uint8_t *) &humid_data;
-
-    service_data[2].service_uuid = RECKEY_SERVICE_UUID;
-    service_data[2].data.size    = sizeof(recKey_data);
-    service_data[2].data.p_data  = (uint8_t *) &recKey_data;
-*/
 
 
     // Build and set advertising data
@@ -230,7 +216,7 @@ static void advdata_update(void)
     advdata.p_service_data_array 		= service_data;
 
     err_code = ble_advdata_set(&advdata, NULL);
-    SEGGER_RTT_printf(0,"adv set err: %d\r\n",err_code);
+    //SEGGER_RTT_printf(0,"adv set err: %d\r\n",err_code);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -267,7 +253,7 @@ void dataToDB_timer_timeout_handler(void * p_context)
 													 (temp << 16) | humid};	
 	
 	SEGGER_RTT_printf(0,"RecKey : %08x, time: %08x, data : %08x, len: %d\r\n", dataPacket[0], dataPacket[1], dataPacket[2], 3);
-	uint32_t err_code = fds_write(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
+	uint32_t err_code = dataToDB(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
 	APP_ERROR_CHECK(err_code);
 }
 
@@ -662,7 +648,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 
 				case BLE_EVT_TX_COMPLETE:
             // Send next key event
-						//SEGGER_RTT_printf(0,"TX Complete\r\n");
+						SEGGER_RTT_printf(0,"TX Complete\r\n");
             nus_tx_flag_set();
             break; // BLE_EVT_TX_COMPLETE
 				

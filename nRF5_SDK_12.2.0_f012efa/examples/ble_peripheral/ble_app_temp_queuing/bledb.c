@@ -70,15 +70,19 @@ ret_code_t fds_write(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t
 		fds_record_t        record;
 		fds_record_desc_t   record_desc;
 		fds_record_chunk_t  record_chunk;
-	// Set up data.
-		uint32_t dataPacket_test[3] = {data[0],data[1],data[2]};
+
+		// Set up data.
+		static uint32_t dataPacket_test[3];
+		for(uint8_t i = 0; i < dataLen; i++) {
+		dataPacket_test[i] = data[i];
+		}
 		
 		record_chunk.p_data         = &dataPacket_test[0];
 		record_chunk.length_words   = dataLen;
 		SEGGER_RTT_printf(0,"Write dataIn: %08x, %08x, %08x, Size:%d\r\n", data[0],data[1],data[2],record_chunk.length_words);
 	// Set up record.
 		record.file_id              = fileID;
-		record.key              	= REC_KEY_START + recCounter;
+		record.key              	  = REC_KEY_START + recCounter;
 		record.data.p_chunks        = &record_chunk;
 		record.data.num_chunks      = 1;
 				
@@ -99,7 +103,7 @@ ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t d
 		fds_find_token_t    ftok ={0};//Important, make sure you zero init the ftok token
 		uint32_t err_code;
 		uint32_t *dataTemp;
-		recKey = get_recKey();
+//		recKey = get_recKey();
 		
 		SEGGER_RTT_printf(0,"Search for FILEID: %04x, RECKEY: %04x \r\n",fileID, recKey);
 		// Loop until all records with the given key and file ID have been found.
@@ -112,7 +116,7 @@ ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t d
 					return err_code;		
 				}
 				
-				SEGGER_RTT_printf(0,"Data read from recordID %d, desc_pointer: %p = ",record_desc.record_id,record_desc.p_record);
+				SEGGER_RTT_printf(0,"Data read from recordID %d = ",record_desc.record_id);
 				dataTemp = (uint32_t *) flash_record.p_data;
 				for (uint8_t i=0;i<flash_record.p_header->tl.length_words;i++)
 				{
@@ -188,7 +192,7 @@ ret_code_t fds_cleanup(uint32_t fileID)
 }
 
 
-ret_code_t dataToDB (uint16_t fileID, uint16_t recKey, uint32_t *data, uint16_t dataLen)
+ret_code_t dataToDB (uint16_t fileID, uint16_t recKey, uint32_t * data, uint16_t dataLen)
 {
 		fileID = FILE_ID;
 		recKey = REC_KEY_START + recCounter;
@@ -203,7 +207,6 @@ ret_code_t dataToDB (uint16_t fileID, uint16_t recKey, uint32_t *data, uint16_t 
 				case FDS_ERR_OPERATION_TIMEOUT:
 				case FDS_ERR_NO_SPACE_IN_FLASH:
 					ret = fds_cleanup(fileID);
-					
 					break;
 				case FDS_ERR_NO_PAGES:
 				case FDS_ERR_BUSY:
@@ -237,6 +240,8 @@ ret_code_t payload_to_central (ble_nus_t * p_nus, uint16_t startRecKey)
 		uint16_t dataLen;
 		ret_code_t ret;
 		uint16_t recKey_current = get_recKey();
+		uint16_t dataCount = 0;
+		
 		for(uint32_t tx_rec_index = startRecKey; tx_rec_index < recKey_current+1; tx_rec_index++)
 		{		
 			recKey = tx_rec_index;
@@ -253,6 +258,7 @@ ret_code_t payload_to_central (ble_nus_t * p_nus, uint16_t startRecKey)
 					case FDS_ERR_OPERATION_TIMEOUT:
 					case FDS_ERR_RECORD_TOO_LARGE:
 					case FDS_ERR_NO_SPACE_IN_FLASH:
+						SEGGER_RTT_printf(0,"No space in flash");
 					case FDS_ERR_NO_PAGES:
 					case FDS_ERR_BUSY:
 					case FDS_ERR_INTERNAL:
@@ -263,38 +269,33 @@ ret_code_t payload_to_central (ble_nus_t * p_nus, uint16_t startRecKey)
 			}
 			
 			uint8_t *p_dataPacket = (uint8_t *)data;
-			uint8_t dataLengthInBytes = dataLen<<2;
+			//uint8_t dataLengthInBytes = dataLen*4;
+			uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
 			uint8_t dataByteArray[dataLengthInBytes];
 			for (uint8_t i=0;i<dataLengthInBytes;i++){	
 				dataByteArray[i] = p_dataPacket[i];
+				//SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
 			}
-
+			//SEGGER_RTT_printf(0,"\r\n, datalen = %d", dataLengthInBytes);
 			ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
 			if (ret != FDS_SUCCESS)
 			{
+				SEGGER_RTT_printf(0,"NUS string send error: %d",ret);
 				return ret;
 			}
 				
 			SEGGER_RTT_printf(0,"Data sent over NUS:");
  			for (uint8_t i=0;i<dataLengthInBytes;i++){
-				SEGGER_RTT_printf(0,"%02x ",dataByteArray[dataLengthInBytes-i]);
+				SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
 			}
 			
 			// replace with better logic for TX_DONE callback
-			for (uint8_t i = 0; i <100; i++) {
-				if (nus_tx_complete==1){
-					nus_tx_complete = 0;
-					break;
-				}
-				else { 
-					nrf_delay_us(5);
-				}
-			}
 			
 			SEGGER_RTT_printf(0,"\r\ntx_flag:%d, counter: %d \r\n", nus_tx_complete,tx_rec_index);
-		
-			
+			dataCount++;
 		}
+		
+		SEGGER_RTT_printf(0,"Total packets sent : %d\r\n", dataCount);
 		// send EOM package (all Fs)
 		uint32_t eom_data[] = {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
 		uint8_t *p_eomDataArray = (uint8_t *)eom_data;
