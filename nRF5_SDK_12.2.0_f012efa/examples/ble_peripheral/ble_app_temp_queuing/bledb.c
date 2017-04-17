@@ -37,6 +37,7 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
             {
               SEGGER_RTT_printf(0,"FDS Initialization Failed \n");  // Initialization failed.
             } 
+						else initFlag = 1;
             break;
 				case FDS_EVT_WRITE:
 						if (p_fds_evt->result == FDS_SUCCESS)
@@ -153,7 +154,8 @@ ret_code_t fds_find_and_delete (uint16_t fileID, uint16_t recKey)
 		ret_code_t ret = fds_gc();
 		if (ret != FDS_SUCCESS)
 		{
-				return ret;
+			
+			return ret;
 		}
 		return NRF_SUCCESS;
 }
@@ -308,4 +310,62 @@ ret_code_t payload_to_central (ble_nus_t * p_nus, uint16_t startRecKey)
 				SEGGER_RTT_printf(0,"Last Packet (all Fs) sent");
 		}
 		return ret;		
+}
+
+ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
+{
+		uint32_t recKey ;
+		uint32_t data[] = {0,0,0};
+		uint16_t dataLen;
+		ret_code_t ret;
+		uint16_t recKey_current = get_recKey();
+		recKey = nusRecKey;
+		
+		if (recKey < recKey_current)
+		{		
+			ret = fds_read(FILE_ID, recKey, data, dataLen);
+			//SEGGER_RTT_printf(0,"read err %d\r\n", ret);
+			
+			//	Handle exceptions like flash full etc : FDS_ERR_*	
+			if (ret != FDS_SUCCESS)
+			{
+				SEGGER_RTT_printf(0,"Record read error: %d", ret);
+				nrf_delay_ms(1000);
+				switch (ret)
+				{
+					case FDS_ERR_OPERATION_TIMEOUT:
+					case FDS_ERR_RECORD_TOO_LARGE:
+					case FDS_ERR_NO_SPACE_IN_FLASH:
+						SEGGER_RTT_printf(0,"No space in flash");
+					case FDS_ERR_NO_PAGES:
+					case FDS_ERR_BUSY:
+					case FDS_ERR_INTERNAL:
+					default:
+						ret = FDS_ERR_INTERNAL;
+						break;
+				}
+			}
+			
+			uint8_t *p_dataPacket = (uint8_t *)data;
+			//uint8_t dataLengthInBytes = dataLen*4;
+			uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
+			uint8_t dataByteArray[dataLengthInBytes];
+			for (uint8_t i=0;i<dataLengthInBytes;i++){	
+				dataByteArray[i] = p_dataPacket[i];
+				//SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
+			}
+			//SEGGER_RTT_printf(0,"\r\n, datalen = %d", dataLengthInBytes);
+			ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
+			if (ret != FDS_SUCCESS)
+			{
+				SEGGER_RTT_printf(0,"NUS string send error: %d",ret);
+				return ret;
+			}
+				
+			SEGGER_RTT_printf(0,"Data sent over NUS:");
+ 			for (uint8_t i=0;i<dataLengthInBytes;i++){
+				SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
+			}
+			
+		}
 }

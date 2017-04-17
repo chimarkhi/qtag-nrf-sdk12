@@ -54,8 +54,9 @@
 #include "ble_conn_params.h"
 #include "ble_hci.h"
 #include "main.h"
+#include "nrf_drv_twi.h"
+#include "sht31.h"
 
-#define DEBUG				1
 
 #define UPLOAD_Q  		   0x1111
 #define LOCALDATA_DB     0x1111
@@ -109,10 +110,15 @@
 
 static ble_nus_t                        m_nus;                                      /**< Structure to identify the Nordic UART Service. */
 static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
-
 static ble_uuid_t                       m_adv_uuids[] = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}};  /**< Universally unique service identifier. */
-static volatile uint8_t write_flag = 0;
+static nrf_drv_twi_t 										twi = NRF_DRV_TWI_INSTANCE(0);
+
+
+// Global variables
+uint16_t nusRecKey;
 time_t tstamp_sec;
+bool initFlag = false;
+
 static ble_gap_adv_params_t m_adv_params;                                 /**< Parameters to be passed to the stack when starting advertising. */
 static uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH] =                    /**< Information advertised by the Beacon. */
 {
@@ -180,10 +186,13 @@ static void advdata_update(void)
     uint8_t       flags = BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED;
 
     ble_advdata_service_data_t service_data[1];
-		
-		uint16_t temp 			 	= temperature_data_get();
-		uint16_t humid 				= humid_data_get();
-		uint16_t timeStamp[2] = {(uint16_t)(tstamp_sec>>16),(uint16_t)tstamp_sec};
+		uint32_t temp_humid 	= get_temp_humid(&twi);
+
+//		uint16_t temp 			 	= temperature_data_get();
+//		uint16_t humid 				= humid_data_get();
+		uint16_t temp					= (uint16_t)(temp_humid>>16);
+		uint16_t humid				= temp_humid;
+		uint16_t timeStamp[2] = {(uint16_t)tstamp_sec,(uint16_t)(tstamp_sec>>16)};
 		uint16_t recKey 	 		= get_recKey();
 	
 		uint16_t dataPacket[2*WORDLEN_DATAPACKET] = {APP_COMPANY_IDENTIFIER, recKey,
@@ -243,8 +252,13 @@ void dataToDB_timer_timeout_handler(void * p_context)
 {
 	time_t date_hour_seconds = tstamp_sec;
 	
-	uint16_t temp =  temperature_data_get();
-	uint16_t humid = humid_data_get();
+//	uint16_t temp =  temperature_data_get();
+//	uint16_t humid = humid_data_get();
+
+	uint32_t temp_humid		= get_temp_humid(&twi);
+	uint16_t temp					= (uint16_t)(temp_humid>>16);
+	uint16_t humid				= temp_humid;
+
 	uint32_t timeStamp = date_hour_seconds;
 	uint32_t recKey = get_recKey();
 	
@@ -344,10 +358,12 @@ static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t lengt
 			}
 			uint16_t startRecKey = p_data[1]<<8|p_data[0];
 			SEGGER_RTT_printf(0,"  Start record : 0x%04x\r\n", startRecKey);
-
+			
 			if (startRecKey < get_recKey()){
+				nusRecKey = startRecKey;
 				SEGGER_RTT_printf(0,"Stating data transfer\r\n");
-				err_code = payload_to_central(&m_nus, startRecKey);
+//				err_code = payload_to_central(&m_nus, nusRecKey);
+				err_code = payload_to_central_async(&m_nus, nusRecKey);
 				SEGGER_RTT_printf(0,"payload upload end error: %d\r\n\n",err_code);
 			}
 			else{
@@ -649,8 +665,23 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 				case BLE_EVT_TX_COMPLETE:
             // Send next key event
 						SEGGER_RTT_printf(0,"TX Complete\r\n");
-            nus_tx_flag_set();
-            break; // BLE_EVT_TX_COMPLETE
+            //nus_tx_flag_set();
+						nusRecKey++;
+						if (nusRecKey < get_recKey()){
+							err_code = payload_to_central_async(&m_nus, nusRecKey);
+						}
+						else if (nusRecKey == get_recKey()){
+							uint32_t eom_data[] = {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
+							uint8_t *p_eomDataArray = (uint8_t *)eom_data;
+							uint32_t ret = ble_nus_string_send(&m_nus, p_eomDataArray, 3);
+							if (ret != NRF_SUCCESS){	
+								SEGGER_RTT_printf(0,"Err sending eom package: %d", ret);
+							}
+							else {
+								SEGGER_RTT_printf(0,"eom sent");
+							}
+						}
+						break; // BLE_EVT_TX_COMPLETE
 				
         case BLE_GAP_EVT_DISCONNECTED:
             err_code = advertising_start();
@@ -888,19 +919,19 @@ static void power_manage(void)
 int main(void)
 {
 		uint32_t err_code;
-    bool erase_bonds;
+		bool erase_bonds;
 		uint32_t* data;
 	
 		// Initialize.
 		log_init();
 		SEGGER_RTT_printf(0,"Initializing ...\n");
 
-    APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, false);
-    err_code = bsp_init(BSP_INIT_LED, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER), NULL);
-    APP_ERROR_CHECK(err_code);
+		APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, false);
+		err_code = bsp_init(BSP_INIT_LED, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER), NULL);
+		APP_ERROR_CHECK(err_code);
 
 		SEGGER_RTT_printf(0,"Initializing Timers \n");
-    uart_init();
+		uart_init();
 		timers_init();
 		tstamp_init();
 		SEGGER_RTT_printf(0,"Timers Initialized \n");
@@ -911,42 +942,46 @@ int main(void)
 		SEGGER_RTT_printf(0,"ble stack Initialized \n");		
 		
 		
-    advertising_init();
+		advertising_init();
 //		ble_nus_advertising_init();		
 		SEGGER_RTT_printf(0,"Adv Initialized \n");
 		
 		services_init();
 		SEGGER_RTT_printf(0,"services Initialized \n");
 
-    conn_params_init();
-    SEGGER_RTT_printf(0,"Conn Params Initialized \n");
+		conn_params_init();
+		SEGGER_RTT_printf(0,"Conn Params Initialized \n");
 		
+		err_code = twi_init(&twi);
+		SEGGER_RTT_printf(0,"SHT31's I2C Initialized \n");
 
-    // Start execution.
-    timers_start();
-    SEGGER_RTT_printf(0,"Times Start.. \n");	
+		// Start execution.
+		timers_start();
+		SEGGER_RTT_printf(0,"Times Start.. \n");
 
-		advertising_start();
-//		ble_nus_advertising_start();
+		err_code = advertising_start();
+		//		ble_nus_advertising_start();
+		SEGGER_RTT_printf(0,"adv start err: %d \n",err_code);
+		APP_ERROR_CHECK(err_code);
 		SEGGER_RTT_printf(0,"Started Advertising \n");
 		
 
 
 		// Wait for fds to be initialized before any read/write
 		err_code =fds_bledb_init();
-		APP_ERROR_CHECK(err_code);
 		SEGGER_RTT_printf(0,"fds init err: %d \n",err_code);
+		APP_ERROR_CHECK(err_code);
 		// POLL FOR INIT CALLBACK
-		
+		while(!initFlag); 
 		err_code = fds_file_delete(FILE_ID);
-		APP_ERROR_CHECK(err_code);		
 		SEGGER_RTT_printf(0,"file del err: %d \n",err_code);
+		APP_ERROR_CHECK(err_code);		
 
 		err_code = fds_gc();
-		APP_ERROR_CHECK(err_code);
 		SEGGER_RTT_printf(0,"gc err: %d \n",err_code);		
 		SEGGER_RTT_printf(0,"\r\n\n");
-		nrf_delay_ms(2000);
+		nrf_delay_ms(1000);
+		APP_ERROR_CHECK(err_code);
 		
 
 		SEGGER_RTT_printf(0,"Test writing data to RAM:\r\n");
