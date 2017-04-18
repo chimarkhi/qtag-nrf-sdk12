@@ -235,83 +235,6 @@ static void create_nus_payload(uint32_t data, uint8_t dataByteArray, uint16_t da
 }
 
 
-ret_code_t payload_to_central (ble_nus_t * p_nus, uint16_t startRecKey)
-{
-		uint32_t recKey ;
-		uint32_t data[] = {0,0,0};
-		uint16_t dataLen;
-		ret_code_t ret;
-		uint16_t recKey_current = get_recKey();
-		uint16_t dataCount = 0;
-		
-		for(uint32_t tx_rec_index = startRecKey; tx_rec_index < recKey_current+1; tx_rec_index++)
-		{		
-			recKey = tx_rec_index;
-			ret = fds_read(FILE_ID, recKey, data, dataLen);
-			//SEGGER_RTT_printf(0,"read err %d\r\n", ret);
-			
-			//	Handle exceptions like flash full etc : FDS_ERR_*	
-			if (ret != FDS_SUCCESS)
-			{
-				SEGGER_RTT_printf(0,"Record read error: %d", ret);
-				nrf_delay_ms(1000);
-				switch (ret)
-				{
-					case FDS_ERR_OPERATION_TIMEOUT:
-					case FDS_ERR_RECORD_TOO_LARGE:
-					case FDS_ERR_NO_SPACE_IN_FLASH:
-						SEGGER_RTT_printf(0,"No space in flash");
-					case FDS_ERR_NO_PAGES:
-					case FDS_ERR_BUSY:
-					case FDS_ERR_INTERNAL:
-					default:
-						ret = FDS_ERR_INTERNAL;
-						break;
-				}
-			}
-			
-			uint8_t *p_dataPacket = (uint8_t *)data;
-			//uint8_t dataLengthInBytes = dataLen*4;
-			uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
-			uint8_t dataByteArray[dataLengthInBytes];
-			for (uint8_t i=0;i<dataLengthInBytes;i++){	
-				dataByteArray[i] = p_dataPacket[i];
-				//SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
-			}
-			//SEGGER_RTT_printf(0,"\r\n, datalen = %d", dataLengthInBytes);
-			ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
-			if (ret != FDS_SUCCESS)
-			{
-				SEGGER_RTT_printf(0,"NUS string send error: %d",ret);
-				return ret;
-			}
-				
-			SEGGER_RTT_printf(0,"Data sent over NUS:");
- 			for (uint8_t i=0;i<dataLengthInBytes;i++){
-				SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
-			}
-			
-			// replace with better logic for TX_DONE callback
-			
-			SEGGER_RTT_printf(0,"\r\ntx_flag:%d, counter: %d \r\n", nus_tx_complete,tx_rec_index);
-			dataCount++;
-		}
-		
-		SEGGER_RTT_printf(0,"Total packets sent : %d\r\n", dataCount);
-		// send EOM package (all Fs)
-		uint32_t eom_data[] = {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
-		uint8_t *p_eomDataArray = (uint8_t *)eom_data;
-		ret = ble_nus_string_send(p_nus, p_eomDataArray, 3);
-		if (ret != FDS_SUCCESS)
-		{
-				return ret;
-		}
-		else{
-				SEGGER_RTT_printf(0,"Last Packet (all Fs) sent");
-		}
-		return ret;		
-}
-
 ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 {
 		uint32_t recKey ;
@@ -345,27 +268,27 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 						break;
 				}
 			}
-			
-			uint8_t *p_dataPacket = (uint8_t *)data;
-			//uint8_t dataLengthInBytes = dataLen*4;
-			uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
-			uint8_t dataByteArray[dataLengthInBytes];
-			for (uint8_t i=0;i<dataLengthInBytes;i++){	
-				dataByteArray[i] = p_dataPacket[i];
-				//SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
+			else {
+				uint8_t *p_dataPacket = (uint8_t *)data;
+				//uint8_t dataLengthInBytes = dataLen*4;
+				uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
+				uint8_t dataByteArray[dataLengthInBytes];
+				for (uint8_t i=0;i<dataLengthInBytes;i++){	
+					dataByteArray[i] = p_dataPacket[i];
+					//SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
+				}
+				//SEGGER_RTT_printf(0,"\r\n, datalen = %d", dataLengthInBytes);
+				ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
+				if (ret != FDS_SUCCESS)
+				{
+					SEGGER_RTT_printf(0,"NUS string send error: %d",ret);
+					return ret;
+				}
+					
+				SEGGER_RTT_printf(0,"Data sent over NUS:");
+				for (uint8_t i=0;i<dataLengthInBytes;i++){
+					SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
+				}
 			}
-			//SEGGER_RTT_printf(0,"\r\n, datalen = %d", dataLengthInBytes);
-			ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
-			if (ret != FDS_SUCCESS)
-			{
-				SEGGER_RTT_printf(0,"NUS string send error: %d",ret);
-				return ret;
 			}
-				
-			SEGGER_RTT_printf(0,"Data sent over NUS:");
- 			for (uint8_t i=0;i<dataLengthInBytes;i++){
-				SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
-			}
-			
-		}
 }
