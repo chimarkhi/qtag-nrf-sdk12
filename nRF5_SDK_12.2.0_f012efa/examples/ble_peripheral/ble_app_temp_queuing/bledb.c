@@ -291,4 +291,5 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 				}
 			}
 			}
+		return NRF_SUCCESS;
 }

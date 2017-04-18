@@ -672,18 +672,12 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 							err_code = payload_to_central_async(&m_nus, nusRecKey);
 						}
 						else if(nusRecKey == nusCurrentKey){
-							uint32_t eom_data[] = {0x46464646, 0x46464646, 0x46464646};
-							uint8_t *p_eomDataArray = (uint8_t *)eom_data;
-							uint32_t ret = ble_nus_string_send(&m_nus, p_eomDataArray, WORDLEN_DATAPACKET);
-							if (ret != NRF_SUCCESS){	
-								SEGGER_RTT_printf(0,"Err sending eom package: %d", ret);
+							err_code = payload_to_central_async(&m_nus, REC_KEY_START);
+							if (err_code != NRF_SUCCESS){	
+								SEGGER_RTT_printf(0,"Err sending eom package: %d\r\n", err_code);
 							}
 							else {
-								SEGGER_RTT_printf(0,"eom sent: ");
-								for(uint8_t i = 0; i<WORDLEN_DATAPACKET;i++){
-								SEGGER_RTT_printf(0,"%02x",eom_data[i]);
-								}
-								SEGGER_RTT_printf(0,"\r\n");
+								SEGGER_RTT_printf(0,"eom sent\r\n");
 								nusRecKey++;
 							}
 						}
@@ -991,7 +985,7 @@ int main(void)
 		
 
 		SEGGER_RTT_printf(0,"Test writing data to RAM:\r\n");
-		uint32_t testData[] = {0xAAAAAAAA,0x0F0F0F0F,0xABCD1234};
+		uint32_t testData[] = {0x46464646,0x46464646,0x46464646};
 		err_code = fds_write(FILE_ID, REC_KEY_START, testData, 3);
 		APP_ERROR_CHECK(err_code); 
 		
