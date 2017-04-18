@@ -75,14 +75,14 @@
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define ADVIINTERVAL_LOGDINTERVAL_RATIO	1
-#define ADV_TIMEOUT_IN_SECONDS      180                               /**< The advertising timeout (in units of seconds). */
+#define LOGINTERVAL_ADVINTERVAL_RATIO		1
+#define ADV_TIMEOUT_IN_SECONDS      		180                               /**< The advertising timeout (in units of seconds). */
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
 #define APP_COMPANY_IDENTIFIER          0x128B                            /**< Company identifier for TagBox */
 #define APP_BEACON_UUID                 0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-#define DEVICE_NAME											"XT0002"
+#define DEVICE_NAME											"XT2EAE"
 #define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN        /**< UUID type for the Nordic UART Service (vendor specific). */
 #define DOOR_STATUS_SERVICE_UUID				0xABCD
 #define UNIXTIME_SERVICE_UUID						0xAB01
@@ -299,7 +299,7 @@ static void timers_start(void)
     uint32_t err_code = app_timer_start(m_advdata_update_timer, ADVDATA_UPDATE_INTERVAL, NULL);
     APP_ERROR_CHECK(err_code);
 	
-    err_code = app_timer_start(m_dataToDB_timer, ADVIINTERVAL_LOGDINTERVAL_RATIO*ADVDATA_UPDATE_INTERVAL, NULL);
+    err_code = app_timer_start(m_dataToDB_timer, LOGINTERVAL_ADVINTERVAL_RATIO*ADVDATA_UPDATE_INTERVAL, NULL);
     APP_ERROR_CHECK(err_code);
 
     err_code = app_timer_start(m_tstamp_timer, TSTAMP_INTERVAL, NULL);
@@ -973,6 +973,7 @@ int main(void)
 		APP_ERROR_CHECK(err_code);
 		// POLL FOR INIT CALLBACK
 		while(!initFlag); 
+		//nrf_delay_ms(2000);
 		err_code = fds_file_delete(FILE_ID);
 		SEGGER_RTT_printf(0,"file del err: %d \n",err_code);
 		APP_ERROR_CHECK(err_code);		
