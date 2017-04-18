@@ -116,6 +116,7 @@ static nrf_drv_twi_t 										twi = NRF_DRV_TWI_INSTANCE(0);
 
 // Global variables
 uint16_t nusRecKey;
+uint16_t nusCurrentKey;
 time_t tstamp_sec;
 bool initFlag = false;
 
@@ -361,10 +362,10 @@ static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t lengt
 			
 			if (startRecKey < get_recKey()){
 				nusRecKey = startRecKey;
+				nusCurrentKey = get_recKey();
 				SEGGER_RTT_printf(0,"Stating data transfer\r\n");
-//				err_code = payload_to_central(&m_nus, nusRecKey);
 				err_code = payload_to_central_async(&m_nus, nusRecKey);
-				SEGGER_RTT_printf(0,"payload upload end error: %d\r\n\n",err_code);
+				//SEGGER_RTT_printf(0,"payload upload end error: %d\r\n\n",err_code);
 			}
 			else{
 				SEGGER_RTT_printf(0,"Input recKey is higher than latest recKey\r\n\n");
@@ -664,13 +665,13 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 
 				case BLE_EVT_TX_COMPLETE:
             // Send next key event
-						SEGGER_RTT_printf(0,"TX Complete\r\n");
+						SEGGER_RTT_printf(0,"    TX Complete\r\n");
             //nus_tx_flag_set();
 						nusRecKey++;
-						if (nusRecKey < get_recKey()){
+						if (nusRecKey < nusCurrentKey){
 							err_code = payload_to_central_async(&m_nus, nusRecKey);
 						}
-						else if (nusRecKey == get_recKey()){
+						else if(nusRecKey == nusCurrentKey){
 							uint32_t eom_data[] = {0x46464646, 0x46464646, 0x46464646};
 							uint8_t *p_eomDataArray = (uint8_t *)eom_data;
 							uint32_t ret = ble_nus_string_send(&m_nus, p_eomDataArray, WORDLEN_DATAPACKET);
@@ -678,10 +679,12 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 								SEGGER_RTT_printf(0,"Err sending eom package: %d", ret);
 							}
 							else {
-								SEGGER_RTT_printf(0,"eom sent:");
+								SEGGER_RTT_printf(0,"eom sent: ");
 								for(uint8_t i = 0; i<WORDLEN_DATAPACKET;i++){
-								SEGGER_RTT_printf(0,"eom sent: %02x",eom_data[i]);
+								SEGGER_RTT_printf(0,"%02x",eom_data[i]);
 								}
+								SEGGER_RTT_printf(0,"\r\n");
+								nusRecKey++;
 							}
 						}
 						break; // BLE_EVT_TX_COMPLETE
