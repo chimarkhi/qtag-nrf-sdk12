@@ -58,6 +58,8 @@ ret_code_t payload_to_central (ble_nus_t * p_nus, uint16_t startRecKey);
 
 ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey);
 		
+ret_code_t payload_to_central_maxthroughput (ble_nus_t * p_nus, uint16_t nusRecKey);
+		
 void nus_tx_flag_set(void);
 		
 uint16_t get_recKey(void);

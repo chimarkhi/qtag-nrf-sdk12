@@ -70,19 +70,19 @@
 #define IS_SRVC_CHANGED_CHARACT_PRESENT 0                                 /**< Include or not the service_changed characteristic. if not enabled, the server's database cannot be changed for the lifetime of the device*/
 
 #define TSTAMP_INTERVAL_IN_MS						1000
-#define ADV_INTERVAL_IN_MS							5000
+#define ADV_INTERVAL_IN_MS							10240
 #define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                 /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		1
+#define LOGINTERVAL_ADVINTERVAL_RATIO		100
 #define ADV_TIMEOUT_IN_SECONDS      		180                               /**< The advertising timeout (in units of seconds). */
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
 #define APP_COMPANY_IDENTIFIER          0x128B                            /**< Company identifier for TagBox */
 #define APP_BEACON_UUID                 0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-#define DEVICE_NAME											"XT2EAE"
+#define DEVICE_NAME											"XT5AFD"
 #define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN        /**< UUID type for the Nordic UART Service (vendor specific). */
 #define DOOR_STATUS_SERVICE_UUID				0xABCD
 #define UNIXTIME_SERVICE_UUID						0xAB01
@@ -90,11 +90,11 @@
 #define RECKEY_SERVICE_UUID							0xAB03
 #define DATAPACKET_UUID									0xAB04
 
-#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(20, UNIT_1_25_MS)            /**< Minimum acceptable connection interval (0.4 seconds). */
-#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(75, UNIT_1_25_MS)            /**< Maximum acceptable connection interval (0.65 second). */
+#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(7.5, UNIT_1_25_MS)  	          /**< Minimum acceptable connection interval (7.5 milli seconds). */
+#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(10, UNIT_1_25_MS)            /**< Maximum acceptable connection interval (0.65 second). */
 #define SLAVE_LATENCY                   0                                           /**< Slave latency. */
 #define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(4000, UNIT_10_MS)             /**< Connection supervisory timeout (4 seconds). */
-#define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER)  /**< Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (5 seconds). */
+#define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER)  /**< Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (1 second). */
 #define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(30000, APP_TIMER_PRESCALER) /**< Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
 #define MAX_CONN_PARAMS_UPDATE_COUNT    3                                           /**< Number of attempts before giving up the connection parameter negotiation. */
 
@@ -185,7 +185,8 @@ static void advdata_update(void)
     uint32_t      err_code;
     ble_advdata_t advdata;
     uint8_t       flags = BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED;
-
+	
+	
     ble_advdata_service_data_t service_data[1];
 		uint32_t temp_humid 	= get_temp_humid(&twi);
 
@@ -228,12 +229,29 @@ static void advdata_update(void)
     err_code = ble_advdata_set(&advdata, NULL);
     //SEGGER_RTT_printf(0,"adv set err: %d\r\n",err_code);
     APP_ERROR_CHECK(err_code);
+		
 }
+
+
+void indicate_advertising(void)
+{
+		// Turn on LED to indicate advertising
+		nrf_gpio_pin_write(19,1);
+		SEGGER_RTT_printf(0,"LED ON");
+	
+		nrf_delay_ms(250);
+		// Turn off LED 
+		nrf_gpio_pin_write(19,0);
+		SEGGER_RTT_printf(0,"LED OFF\r\n");
+	
+}
+
 
 
 void advdata_update_timer_timeout_handler(void * p_context)
 {
   advdata_update();	
+	indicate_advertising();
 }
 
 void tstamp_timer_timeout_handler(void * p_context)
@@ -350,6 +368,7 @@ static void gap_params_init(void)
 static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t length)
 {
 			uint32_t err_code;
+			uint16_t nusRecKeyOut;
 			SEGGER_RTT_printf(0,"Inside nus data handler\r\n");
 
 			SEGGER_RTT_printf(0,"data from central (Only 2 bytes used by code):");	
@@ -365,7 +384,7 @@ static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t lengt
 				nusCurrentKey = get_recKey();
 				SEGGER_RTT_printf(0,"Stating data transfer\r\n");
 				err_code = payload_to_central_async(&m_nus, nusRecKey);
-				//SEGGER_RTT_printf(0,"payload upload end error: %d\r\n\n",err_code);
+				
 			}
 			else{
 				SEGGER_RTT_printf(0,"Input recKey is higher than latest recKey\r\n\n");
@@ -654,18 +673,21 @@ static uint32_t advertising_start(void)
 static void on_ble_evt(ble_evt_t * p_ble_evt)
 {
     uint32_t err_code;
-
+		uint16_t nusRecKeyOut;
+	
     switch (p_ble_evt->header.evt_id)
     {
         case BLE_GAP_EVT_CONNECTED:
             err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
             APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+						nrf_gpio_pin_write(18,1);
             break; // BLE_GAP_EVT_CONNECTED
 
 				case BLE_EVT_TX_COMPLETE:
             // Send next key event
-						SEGGER_RTT_printf(0,"    TX Complete\r\n");
+						
+						SEGGER_RTT_printf(0,"\r\nTX Complete\r\n");
             //nus_tx_flag_set();
 						nusRecKey++;
 						if (nusRecKey < nusCurrentKey){
@@ -684,8 +706,9 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 						break; // BLE_EVT_TX_COMPLETE
 				
         case BLE_GAP_EVT_DISCONNECTED:
-            err_code = advertising_start();
-						SEGGER_RTT_printf(0,"Adv restarted after disconnet\r\n\n");
+            nrf_gpio_pin_write(18,0);
+						err_code = advertising_start();
+						SEGGER_RTT_printf(0,"Adv restarted after disconnet errcode: %d\r\n\n",err_code);
             APP_ERROR_CHECK(err_code);
             m_conn_handle = BLE_CONN_HANDLE_INVALID;
             break; // BLE_GAP_EVT_DISCONNECTED
@@ -921,6 +944,8 @@ int main(void)
 		uint32_t err_code;
 		bool erase_bonds;
 		uint32_t* data;
+		bsp_board_leds_init();
+		nrf_delay_ms(5000);
 	
 		// Initialize.
 		log_init();
@@ -965,8 +990,8 @@ int main(void)
 		APP_ERROR_CHECK(err_code);
 		SEGGER_RTT_printf(0,"Started Advertising \n");
 		
-
-
+		bsp_board_leds_on();
+		
 		// Wait for fds to be initialized before any read/write
 		err_code =fds_bledb_init();
 		SEGGER_RTT_printf(0,"fds init err: %d \n",err_code);
@@ -994,6 +1019,7 @@ int main(void)
 		
 		//err_code = fds_read(FILE_ID, REC_KEY_START, data);
 		//APP_ERROR_CHECK(err_code);
+		
 		
 
     // Enter main loop.

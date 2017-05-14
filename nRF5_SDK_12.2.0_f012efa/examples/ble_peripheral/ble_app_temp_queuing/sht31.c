@@ -93,7 +93,7 @@ uint32_t get_temp_humid(nrf_drv_twi_t * p_twi)
 //		}
 //		SEGGER_RTT_printf(0,"\r\n");
 		
-		uint16_t temp = (((rx_data[0] * 256) + rx_data[1])) / 3.74  - 4500;
+		int16_t temp = (((rx_data[0] * 256) + rx_data[1])) / 3.74  - 4500;
 		uint16_t humid = (((rx_data[3] * 256) + rx_data[4])) / 655;
 		
 		return (temp<<16|humid);

@@ -273,11 +273,11 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 				//uint8_t dataLengthInBytes = dataLen*4;
 				uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
 				uint8_t dataByteArray[dataLengthInBytes];
-				for (uint8_t i=0;i<dataLengthInBytes;i++){	
+				for (uint8_t i=0;i<dataLengthInBytes;i++){
 					dataByteArray[i] = p_dataPacket[i];
 					//SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
 				}
-				//SEGGER_RTT_printf(0,"\r\n, datalen = %d", dataLengthInBytes);
+
 				ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
 				if (ret != FDS_SUCCESS)
 				{
@@ -293,3 +293,77 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 			}
 		return NRF_SUCCESS;
 }
+
+
+ret_code_t payload_to_central_maxthroughput (ble_nus_t * p_nus, uint16_t nusRecKey)
+{
+		uint16_t recKey ;
+		uint32_t data[] = {0,0,0};
+		uint16_t dataLen;
+		ret_code_t ret;
+		recKey = nusRecKey;
+		
+		while (recKey-nusRecKey <10)
+		{		
+			ret = fds_read(FILE_ID, recKey, data, dataLen);
+			//SEGGER_RTT_printf(0,"read err %d\r\n", ret);
+			
+			//	Handle exceptions like flash full etc : FDS_ERR_*	
+			if (ret != FDS_SUCCESS)
+			{
+				SEGGER_RTT_printf(0,"Record read error: %d", ret);
+				nrf_delay_ms(1000);
+				switch (ret)
+				{
+					case FDS_ERR_OPERATION_TIMEOUT:
+					case FDS_ERR_RECORD_TOO_LARGE:
+					case FDS_ERR_NO_SPACE_IN_FLASH:
+						SEGGER_RTT_printf(0,"No space in flash");
+						break;
+					case FDS_ERR_NO_PAGES:
+					case FDS_ERR_BUSY:
+					case FDS_ERR_INTERNAL:
+					default:
+						ret = FDS_ERR_INTERNAL;
+						break;
+				}
+			}
+			else {
+				uint8_t *p_dataPacket = (uint8_t *)data;
+				//uint8_t dataLengthInBytes = dataLen*4;
+				uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
+				uint8_t dataByteArray[dataLengthInBytes];
+				for (uint8_t i=0;i<dataLengthInBytes;i++){
+					dataByteArray[i] = p_dataPacket[i];
+					//SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
+				}
+
+				ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
+				if (ret == BLE_ERROR_NO_TX_PACKETS ||
+            ret == NRF_ERROR_INVALID_STATE || 
+            ret == BLE_ERROR_GATTS_SYS_ATTR_MISSING)
+        {
+						SEGGER_RTT_printf(0,"No TX Packets left err: %d",ret);
+						break;
+        }
+        else if (ret != NRF_SUCCESS) 
+        {
+            return ret;
+        }					
+				else 
+				{	
+					SEGGER_RTT_printf(0,"Data sent over NUS:");
+					for (uint8_t i=0;i<dataLengthInBytes;i++)
+					{
+						SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
+					}
+					SEGGER_RTT_printf(0,"\r\n");
+					recKey++;
+					nusRecKey = recKey;
+				}
+			}
+		}
+		
+		return NRF_SUCCESS;
+}
+
