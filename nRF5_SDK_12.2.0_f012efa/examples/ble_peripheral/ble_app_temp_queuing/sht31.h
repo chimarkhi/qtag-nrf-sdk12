@@ -9,10 +9,11 @@
 
 
 // SHT31's SCL AND SDA PINS on nRF"
-#define DEVICE_SCL_PIN 29
-#define DEVICE_SDA_PIN 30
-#define SLAVE_ADDRESS 0x44
+#define DEVICE_SCL_PIN 	29
+#define DEVICE_SDA_PIN 	30
+#define SLAVE_ADDRESS 	0x44
 
+#define I2C_READ_ERROR 	0xFFFFFFFF
 
 void twi_handler(nrf_drv_twi_evt_t const * p_event, void * p_context);
 

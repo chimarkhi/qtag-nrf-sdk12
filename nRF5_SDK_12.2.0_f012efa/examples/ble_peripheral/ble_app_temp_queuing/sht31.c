@@ -59,8 +59,6 @@ uint32_t twi_init (nrf_drv_twi_t * p_twi)
 			SEGGER_RTT_printf(0,"Err in I2C init: %d",err_code);
 			return err_code;
 		}
-    
-    nrf_drv_twi_enable(p_twi);
 	
 		return NRF_SUCCESS;
 }
@@ -70,6 +68,8 @@ uint32_t twi_init (nrf_drv_twi_t * p_twi)
  */
 uint32_t get_temp_humid(nrf_drv_twi_t * p_twi)
 	{
+		nrf_drv_twi_enable(p_twi);
+		
 		uint8_t rx_data[6]={0};
 		uint32_t err_code;
 		uint8_t config_sht[] ={0x2C,0x06};
@@ -85,8 +85,10 @@ uint32_t get_temp_humid(nrf_drv_twi_t * p_twi)
 		//APP_ERROR_CHECK(err_code);
     if (err_code != NRF_SUCCESS){
 			SEGGER_RTT_printf(0,"I2C rx err: %d\r\n",err_code);
-			return err_code;
+			return I2C_READ_ERROR;
 		}
+		
+		nrf_drv_twi_disable(p_twi);
 		
 //		for (int8_t i=0; i<sizeof(rx_data);i++){
 //		SEGGER_RTT_printf(0,"%d, ",rx_data[i]);

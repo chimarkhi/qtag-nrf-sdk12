@@ -58,36 +58,27 @@
 #include "sht31.h"
 
 
-#define UPLOAD_Q  		   0x1111
-#define LOCALDATA_DB     0x1111
-
 #define UART_RX_FIFO_LEN	20
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2        /**< Reply when unsupported features are requested. */
 #define CENTRAL_LINK_COUNT              0                                 /**< Number of central links used by the application. When changing this number remember to adjust the RAM settings*/
 #define PERIPHERAL_LINK_COUNT           1                                 /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
-#define IS_SRVC_CHANGED_CHARACT_PRESENT 0                                 /**< Include or not the service_changed characteristic. if not enabled, the server's database cannot be changed for the lifetime of the device*/
-
 #define TSTAMP_INTERVAL_IN_MS						1000
-#define ADV_INTERVAL_IN_MS							10240
+#define ADV_INTERVAL_IN_MS							2000
 #define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                 /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		100
+#define LOGINTERVAL_ADVINTERVAL_RATIO		375
 #define ADV_TIMEOUT_IN_SECONDS      		180                               /**< The advertising timeout (in units of seconds). */
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
 #define APP_COMPANY_IDENTIFIER          0x128B                            /**< Company identifier for TagBox */
 #define APP_BEACON_UUID                 0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-#define DEVICE_NAME											"XT5AFD"
+#define DEVICE_NAME											"XT86A6"
 #define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN        /**< UUID type for the Nordic UART Service (vendor specific). */
-#define DOOR_STATUS_SERVICE_UUID				0xABCD
-#define UNIXTIME_SERVICE_UUID						0xAB01
-#define HUMIDITY_SERVICE_UUID						0xAB02
-#define RECKEY_SERVICE_UUID							0xAB03
 #define DATAPACKET_UUID									0xAB04
 
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(7.5, UNIT_1_25_MS)  	          /**< Minimum acceptable connection interval (7.5 milli seconds). */
@@ -112,7 +103,6 @@ static ble_nus_t                        m_nus;                                  
 static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
 static ble_uuid_t                       m_adv_uuids[] = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}};  /**< Universally unique service identifier. */
 static nrf_drv_twi_t 										twi = NRF_DRV_TWI_INSTANCE(0);
-
 
 // Global variables
 uint16_t nusRecKey;
@@ -158,27 +148,6 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
 
-uint32_t temperature_data_get(void)
-{
-    int32_t temp;
-    uint32_t err_code;
-
-    err_code = sd_temp_get(&temp);
-    APP_ERROR_CHECK(err_code);
-
-    temp = temp*25; // -200 for Minew_Tag16 and 07; -425 for Minew_tag13;
-    int8_t exponent = -2;
-    return ((exponent & 0xFF) << 24) | (temp & 0x00FFFFFF);
-}
-
-uint16_t humid_data_get(void)
-{
-    int16_t humid = 0x002F;
-    uint32_t err_code;
-
-    return humid;
-}
-
 
 static void advdata_update(void)
 {
@@ -189,6 +158,10 @@ static void advdata_update(void)
 	
     ble_advdata_service_data_t service_data[1];
 		uint32_t temp_humid 	= get_temp_humid(&twi);
+		if (temp_humid == I2C_READ_ERROR)
+		{
+			return;
+		}
 
 //		uint16_t temp 			 	= temperature_data_get();
 //		uint16_t humid 				= humid_data_get();
@@ -236,13 +209,15 @@ static void advdata_update(void)
 void indicate_advertising(void)
 {
 		// Turn on LED to indicate advertising
-		nrf_gpio_pin_write(19,1);
-		SEGGER_RTT_printf(0,"LED ON");
+		nrf_gpio_pin_write(19,1); // Minew S1 v1.0 green LED
+		//nrf_gpio_pin_write(17,1); 	// Minew S1 v0.9 blue LED		
+		//SEGGER_RTT_printf(0,"LED ON");
 	
-		nrf_delay_ms(250);
+		nrf_delay_ms(5);
 		// Turn off LED 
-		nrf_gpio_pin_write(19,0);
-		SEGGER_RTT_printf(0,"LED OFF\r\n");
+		nrf_gpio_pin_write(19,0); // Minew S1 v0.9 green LED
+		//nrf_gpio_pin_write(17,0);		// Minew S1 v0.9 blue LED
+		//SEGGER_RTT_printf(0,"LED OFF\r\n");
 	
 }
 
@@ -256,7 +231,8 @@ void advdata_update_timer_timeout_handler(void * p_context)
 
 void tstamp_timer_timeout_handler(void * p_context)
 {
-  ++tstamp_sec;
+	//tstamp_sec = tstamp_sec + 60;		// for quick testing
+	 ++tstamp_sec;
 //	SEGGER_RTT_printf(0,"Timestamp %d\r\n",tstamp_sec);
 }
 
@@ -270,14 +246,22 @@ void tstamp_init()
 void dataToDB_timer_timeout_handler(void * p_context)
 {
 	time_t date_hour_seconds = tstamp_sec;
+	uint16_t temp, humid;
 	
 //	uint16_t temp =  temperature_data_get();
 //	uint16_t humid = humid_data_get();
 
 	uint32_t temp_humid		= get_temp_humid(&twi);
-	uint16_t temp					= (uint16_t)(temp_humid>>16);
-	uint16_t humid				= temp_humid;
-
+	if (temp_humid == I2C_READ_ERROR)
+	{	
+		return;
+	}
+	else
+	{
+		temp	= (uint16_t)(temp_humid>>16);
+		humid	= temp_humid;
+	}
+	
 	uint32_t timeStamp = date_hour_seconds;
 	uint32_t recKey = get_recKey();
 	
@@ -681,8 +665,9 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
             APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
-						nrf_gpio_pin_write(18,1);
-            break; // BLE_GAP_EVT_CONNECTED
+						nrf_gpio_pin_write(18,1);		// Minew S1 v1.0 Red LED
+            //nrf_gpio_pin_write(18,1);			// Minew S1 v0.9 Red LED
+						break; // BLE_GAP_EVT_CONNECTED
 
 				case BLE_EVT_TX_COMPLETE:
             // Send next key event
@@ -706,7 +691,8 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 						break; // BLE_EVT_TX_COMPLETE
 				
         case BLE_GAP_EVT_DISCONNECTED:
-            nrf_gpio_pin_write(18,0);
+            nrf_gpio_pin_write(18,0);	// Minew S1 v1.0 Red LED
+            //nrf_gpio_pin_write(18,0);			// Minew S1 v0.9 Red LED
 						err_code = advertising_start();
 						SEGGER_RTT_printf(0,"Adv restarted after disconnet errcode: %d\r\n\n",err_code);
             APP_ERROR_CHECK(err_code);
@@ -932,7 +918,8 @@ static void buttons_leds_init(bool * p_erase_bonds)
  */
 static void power_manage(void)
 {
-    uint32_t err_code = sd_app_evt_wait();
+    SEGGER_RTT_printf(0,"In power manage");
+		uint32_t err_code = sd_app_evt_wait();
     APP_ERROR_CHECK(err_code);
 }
 
@@ -956,7 +943,7 @@ int main(void)
 		APP_ERROR_CHECK(err_code);
 
 		SEGGER_RTT_printf(0,"Initializing Timers \n");
-		uart_init();
+		//uart_init();
 		timers_init();
 		tstamp_init();
 		SEGGER_RTT_printf(0,"Timers Initialized \n");
