@@ -1769,7 +1769,7 @@
 // <e> RTC_ENABLED - nrf_drv_rtc - RTC peripheral driver
 //==========================================================
 #ifndef RTC_ENABLED
-#define RTC_ENABLED 1
+#define RTC_ENABLED 0
 #endif
 #if  RTC_ENABLED
 // <o> RTC_DEFAULT_CONFIG_FREQUENCY - Frequency  <16-32768> 
@@ -1888,7 +1888,7 @@
 // <e> SAADC_ENABLED - nrf_drv_saadc - SAADC peripheral driver
 //==========================================================
 #ifndef SAADC_ENABLED
-#define SAADC_ENABLED 0
+#define SAADC_ENABLED 1
 #endif
 #if  SAADC_ENABLED
 // <o> SAADC_CONFIG_RESOLUTION  - Resolution
@@ -3186,7 +3186,7 @@
 // <i> @ref FDS_VIRTUAL_PAGE_SIZE * 4 bytes.
 
 #ifndef FDS_VIRTUAL_PAGES
-#define FDS_VIRTUAL_PAGES 25
+#define FDS_VIRTUAL_PAGES 2
 #endif
 
 // <o> FDS_VIRTUAL_PAGE_SIZE  - The size of a virtual page of flash memory, expressed in number of 4-byte words.
@@ -3198,7 +3198,7 @@
 // <2048=> 2048 
 
 #ifndef FDS_VIRTUAL_PAGE_SIZE
-#define FDS_VIRTUAL_PAGE_SIZE 2048
+#define FDS_VIRTUAL_PAGE_SIZE 1024
 #endif
 
 #endif //FDS_ENABLED

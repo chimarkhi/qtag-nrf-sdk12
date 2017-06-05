@@ -9,9 +9,13 @@
 
 #define FILE_ID 							0x1111
 #define REC_KEY_START     		0x2222
+#define REC_KEY_LASTSEEN   		0x0002
 #define WORDLEN_DATAPACKET		3
+
 extern uint16_t nusRecKey;
-extern bool initFlag;
+extern volatile bool initFlag;
+extern volatile bool gcDone;
+extern volatile bool writeFlag;
 
 /**@brief   Data type fed to DB
  *
@@ -57,10 +61,11 @@ static void create_nus_payload(uint32_t data, uint8_t dataByteArray, uint16_t da
 ret_code_t payload_to_central (ble_nus_t * p_nus, uint16_t startRecKey);
 
 ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey);
-		
-ret_code_t payload_to_central_maxthroughput (ble_nus_t * p_nus, uint16_t nusRecKey);
-		
+				
 void nus_tx_flag_set(void);
 		
 uint16_t get_recKey(void);
 	
+void recCounter_init(uint16_t reckey_init);
+
+ret_code_t fds_update(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t dataLen);

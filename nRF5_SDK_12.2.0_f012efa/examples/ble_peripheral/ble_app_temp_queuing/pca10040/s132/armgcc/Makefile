@@ -38,6 +38,7 @@ SRC_FILES += \
   $(PROJ_DIR)/main.c \
   $(PROJ_DIR)/bledb.c		 \
   $(PROJ_DIR)/sht31.c		 \
+  $(PROJ_DIR)/battery_level.c		 \
   $(SDK_ROOT)/external/segger_rtt/RTT_Syscalls_GCC.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_printf.c \
@@ -49,8 +50,10 @@ SRC_FILES += \
   $(SDK_ROOT)/components/toolchain/system_nrf52.c \
   $(SDK_ROOT)/components/softdevice/common/softdevice_handler/softdevice_handler.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c	\
-  $(SDK_ROOT)/components/drivers_nrf/twi_master/nrf_drv_twi.c
-
+  $(SDK_ROOT)/components/drivers_nrf/twi_master/nrf_drv_twi.c	\
+  $(SDK_ROOT)/components/drivers_nrf/saadc/nrf_drv_saadc.c	\
+  $(SDK_ROOT)/components/drivers_nrf/hal/nrf_saadc.c	\
+  
 # Include folders common to all targets
 INC_FOLDERS += \
   $(SDK_ROOT)/components/drivers_nrf/comp \
@@ -192,6 +195,7 @@ CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin --short-enums 
 CFLAGS += -DNRF_LOG_USES_RTT=1
+CFLAGS += -DDEVICE_INITIALIZATION
 
 # C++ flags common to all targets
 CXXFLAGS += \
@@ -217,6 +221,7 @@ ASMFLAGS += -DSWI_DISABLE0
 ASMFLAGS += -DNRF52_PAN_20
 ASMFLAGS += -DNRF52_PAN_55
 ASMFLAGS += -DS132
+
 
 # Linker flags
 LDFLAGS += -mthumb -mabi=aapcs -L $(TEMPLATE_PATH) -T$(LINKER_SCRIPT)

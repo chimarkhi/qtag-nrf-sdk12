@@ -56,9 +56,7 @@
 #include "main.h"
 #include "nrf_drv_twi.h"
 #include "sht31.h"
-
-
-#define UART_RX_FIFO_LEN	20
+#include "battery_level.h"
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2        /**< Reply when unsupported features are requested. */
 #define CENTRAL_LINK_COUNT              0                                 /**< Number of central links used by the application. When changing this number remember to adjust the RAM settings*/
@@ -70,7 +68,7 @@
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		375
+#define LOGINTERVAL_ADVINTERVAL_RATIO		300
 #define ADV_TIMEOUT_IN_SECONDS      		180                               /**< The advertising timeout (in units of seconds). */
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
@@ -96,19 +94,18 @@
 #define APP_TIMER_OP_QUEUE_SIZE         4		                                 /**< Size of timer operation queues. */
 #define TSTAMP_PRESCALER             		4095                                 /**< Value of the RTC1 PRESCALER register. */
 
-#define UART_TX_BUF_SIZE                256                                         /**< UART TX buffer size. */
-#define UART_RX_BUF_SIZE                256                                         /**< UART RX buffer size. */
 
 static ble_nus_t                        m_nus;                                      /**< Structure to identify the Nordic UART Service. */
 static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
-static ble_uuid_t                       m_adv_uuids[] = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}};  /**< Universally unique service identifier. */
 static nrf_drv_twi_t 										twi = NRF_DRV_TWI_INSTANCE(0);
 
 // Global variables
 uint16_t nusRecKey;
 uint16_t nusCurrentKey;
 time_t tstamp_sec;
-bool initFlag = false;
+volatile bool initFlag = false;
+volatile bool gcDone = false;
+volatile bool writeFlag = false;
 
 static ble_gap_adv_params_t m_adv_params;                                 /**< Parameters to be passed to the stack when starting advertising. */
 static uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH] =                    /**< Information advertised by the Beacon. */
@@ -154,25 +151,29 @@ static void advdata_update(void)
     uint32_t      err_code;
     ble_advdata_t advdata;
     uint8_t       flags = BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED;
-	
+		uint16_t 			temp, humid_batt;
 	
     ble_advdata_service_data_t service_data[1];
+
 		uint32_t temp_humid 	= get_temp_humid(&twi);
+		uint8_t batt_level 		= get_battery_level();
+	
 		if (temp_humid == I2C_READ_ERROR)
 		{
 			return;
 		}
-
-//		uint16_t temp 			 	= temperature_data_get();
-//		uint16_t humid 				= humid_data_get();
-		uint16_t temp					= (uint16_t)(temp_humid>>16);
-		uint16_t humid				= temp_humid;
+		else
+		{
+			temp					= (uint16_t)(temp_humid>>16);
+			humid_batt		= temp_humid<<8|batt_level;
+		}
+		
 		uint16_t timeStamp[2] = {(uint16_t)tstamp_sec,(uint16_t)(tstamp_sec>>16)};
 		uint16_t recKey 	 		= get_recKey();
 	
 		uint16_t dataPacket[2*WORDLEN_DATAPACKET] = {APP_COMPANY_IDENTIFIER, recKey,
 													 timeStamp[0], timeStamp[1],
-													 temp,  			 humid};	
+													 temp,  			 humid_batt};	
 	
 		service_data[0].service_uuid = DATAPACKET_UUID;
     service_data[0].data.size    = 4*WORDLEN_DATAPACKET;
@@ -183,10 +184,8 @@ static void advdata_update(void)
     // Build and set advertising data
     memset(&advdata, 0, sizeof(advdata));
 
-    ble_advdata_manuf_data_t manuf_specific_data;
-
+//    ble_advdata_manuf_data_t manuf_specific_data;
 //    manuf_specific_data.company_identifier = APP_COMPANY_IDENTIFIER;
-
 //    manuf_specific_data.data.p_data = (uint8_t *)m_beacon_info;
 //    manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
 
@@ -231,47 +230,73 @@ void advdata_update_timer_timeout_handler(void * p_context)
 
 void tstamp_timer_timeout_handler(void * p_context)
 {
-	//tstamp_sec = tstamp_sec + 60;		// for quick testing
 	 ++tstamp_sec;
 //	SEGGER_RTT_printf(0,"Timestamp %d\r\n",tstamp_sec);
 }
 
-void tstamp_init()
+/**@brief Function for the tstamp and record key
+ *
+ * @details Initializes reckey and tstamp from last record key and timestamp stored in REC_KEY_LASTSEEN.
+ * @details a check on read data's reckey is made, to see if it is within expected range. Otherwise tstamp 
+ * @details and recCounter initialized to 0
+ * @details Should be called only on device reset (battery change)
+ */
+void tstamp_reckey_init()
 {
-//	tstamp_sec = 0x58EF93FA; 
-		tstamp_sec = 0x0;
+		uint32_t data[] = {0,0,0};
+		uint16_t dataLen;
+		uint32_t err_code;
+
+		err_code = fds_read(FILE_ID, REC_KEY_LASTSEEN, data, dataLen);
+		
+		if ((data[0]<0x0000FFFF) && (data[0] > (uint32_t)REC_KEY_START))
+		{
+			tstamp_sec = data[1];
+			recCounter_init((uint16_t)data[0]);
+		}
+		else
+		{
+			tstamp_sec = 0;
+			recCounter_init(REC_KEY_START);
+		}
 }
 
 
 void dataToDB_timer_timeout_handler(void * p_context)
 {
-	time_t date_hour_seconds = tstamp_sec;
-	uint16_t temp, humid;
-	
-//	uint16_t temp =  temperature_data_get();
-//	uint16_t humid = humid_data_get();
-
-	uint32_t temp_humid		= get_temp_humid(&twi);
-	if (temp_humid == I2C_READ_ERROR)
-	{	
-		return;
-	}
-	else
-	{
-		temp	= (uint16_t)(temp_humid>>16);
-		humid	= temp_humid;
-	}
-	
-	uint32_t timeStamp = date_hour_seconds;
-	uint32_t recKey = get_recKey();
-	
-	uint32_t dataPacket[WORDLEN_DATAPACKET] = {recKey,
-													 timeStamp,
-													 (temp << 16) | humid};	
-	
-	SEGGER_RTT_printf(0,"RecKey : %08x, time: %08x, data : %08x, len: %d\r\n", dataPacket[0], dataPacket[1], dataPacket[2], 3);
-	uint32_t err_code = dataToDB(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
-	APP_ERROR_CHECK(err_code);
+		time_t date_hour_seconds = tstamp_sec;
+		uint16_t temp, humid_batt;
+		
+		
+		uint32_t temp_humid		= get_temp_humid(&twi);
+		uint8_t batt_level		= get_battery_level();
+		
+		if (temp_humid == I2C_READ_ERROR)
+		{	
+			return;
+		}
+		else
+		{
+			temp				= (uint16_t)(temp_humid>>16);
+			humid_batt	= temp_humid<<8 | batt_level;
+		}
+		
+		uint32_t timeStamp = date_hour_seconds;
+		uint32_t recKey = get_recKey();
+		
+		uint32_t dataPacket[WORDLEN_DATAPACKET] = {recKey,
+														 timeStamp,
+														 (temp << 16) | humid_batt};	
+															 
+		SEGGER_RTT_printf(0,"\r\n\n\nData to DB: RecKey %08x, time %08x, data %08x\r\n", dataPacket[0], dataPacket[1], dataPacket[2]);
+		uint32_t err_code = dataToDB(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
+		
+		// if data saved successfully, update the last seen reckey and tstamp in flash												 
+		if (err_code == NRF_SUCCESS)
+		{
+			//err_code = fds_update(FILE_ID, REC_KEY_LASTSEEN, dataPacket, WORDLEN_DATAPACKET);			
+		}
+		//SEGGER_RTT_printf(0,"FDS write error : %d", err_code); 
 }
 
 /**@brief Function for the Timer initialization.
@@ -351,8 +376,6 @@ static void gap_params_init(void)
 /**@snippet [Handling the data received over BLE] */
 static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t length)
 {
-			uint32_t err_code;
-			uint16_t nusRecKeyOut;
 			SEGGER_RTT_printf(0,"Inside nus data handler\r\n");
 
 			SEGGER_RTT_printf(0,"data from central (Only 2 bytes used by code):");	
@@ -367,7 +390,7 @@ static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t lengt
 				nusRecKey = startRecKey;
 				nusCurrentKey = get_recKey();
 				SEGGER_RTT_printf(0,"Stating data transfer\r\n");
-				err_code = payload_to_central_async(&m_nus, nusRecKey);
+				uint32_t err_code = payload_to_central_async(&m_nus, nusRecKey);
 				
 			}
 			else{
@@ -488,79 +511,6 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
     }
 }
 
-/**@brief   Function for handling app_uart events.
- *
- * @details This function will receive a single character from the app_uart module and append it to
- *          a string. The string will be be sent over BLE when the last character received was a
- *          'new line' i.e '\r\n' (hex 0x0D) or if the string has reached a length of
- *          @ref NUS_MAX_DATA_LENGTH.
- */
-/**@snippet [Handling the data received over UART] */
-void uart_event_handle(app_uart_evt_t * p_event)
-{
-    static uint8_t data_array[BLE_NUS_MAX_DATA_LEN];
-    static uint8_t index = 0;
-    uint32_t       err_code;
-
-    switch (p_event->evt_type)
-    {
-        case APP_UART_DATA_READY:
-            UNUSED_VARIABLE(app_uart_get(&data_array[index]));
-            index++;
-
-            if ((data_array[index - 1] == '\n') || (index >= (BLE_NUS_MAX_DATA_LEN)))
-            {
-                err_code = ble_nus_string_send(&m_nus, data_array, index);
-                if (err_code != NRF_ERROR_INVALID_STATE)
-                {
-                    APP_ERROR_CHECK(err_code);
-                }
-
-                index = 0;
-            }
-            break;
-
-        case APP_UART_COMMUNICATION_ERROR:
-            APP_ERROR_HANDLER(p_event->data.error_communication);
-            break;
-
-        case APP_UART_FIFO_ERROR:
-            APP_ERROR_HANDLER(p_event->data.error_code);
-            break;
-
-        default:
-            break;
-    }
-}
-/**@snippet [Handling the data received over UART] */
-
-
-/**@brief  Function for initializing the UART module.
- */
-/**@snippet [UART Initialization] */
-static void uart_init(void)
-{
-    uint32_t                     err_code;
-    const app_uart_comm_params_t comm_params =
-    {
-        RX_PIN_NUMBER,
-        TX_PIN_NUMBER,
-        RTS_PIN_NUMBER,
-        CTS_PIN_NUMBER,
-        APP_UART_FLOW_CONTROL_DISABLED,
-        false,
-        UART_BAUDRATE_BAUDRATE_Baud115200
-    };
-
-    APP_UART_FIFO_INIT( &comm_params,
-                       UART_RX_BUF_SIZE,
-                       UART_TX_BUF_SIZE,
-                       uart_event_handle,
-                       APP_IRQ_PRIORITY_LOWEST,
-                       err_code);
-    APP_ERROR_CHECK(err_code);
-}
-/**@snippet [UART Initialization] */
 
 
 /**@brief Function for initializing the Advertising functionality.
@@ -603,36 +553,6 @@ static void advertising_init(void)
 }
 
 
-
-/**@brief Function for initializing the Advertising functionality.
- */
-static void ble_nus_advertising_init(void)
-{
-    uint32_t               err_code;
-    ble_advdata_t          advdata;
-    ble_advdata_t          scanrsp;
-    ble_adv_modes_config_t options;
-
-    // Build advertising data struct to pass into @ref ble_advertising_init.
-    memset(&advdata, 0, sizeof(advdata));
-    advdata.name_type          = BLE_ADVDATA_FULL_NAME;
-    advdata.include_appearance = false;
-    advdata.flags              = BLE_GAP_ADV_FLAGS_LE_ONLY_LIMITED_DISC_MODE;
-
-    memset(&scanrsp, 0, sizeof(scanrsp));
-    scanrsp.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
-    scanrsp.uuids_complete.p_uuids  = m_adv_uuids;
-
-    memset(&options, 0, sizeof(options));
-    options.ble_adv_fast_enabled  = true;
-    options.ble_adv_fast_interval = ADV_INTERVAL;
-    options.ble_adv_fast_timeout  = ADV_TIMEOUT_IN_SECONDS;
-
-    err_code = ble_advertising_init(&advdata, NULL, &options, on_adv_evt, NULL);
-		SEGGER_RTT_printf(0,"Adv init error: %d \r\n",err_code);
-		APP_ERROR_CHECK(err_code);
-}
-
 /**@brief Function for starting advertising.
  */
 static uint32_t advertising_start(void)
@@ -657,7 +577,6 @@ static uint32_t advertising_start(void)
 static void on_ble_evt(ble_evt_t * p_ble_evt)
 {
     uint32_t err_code;
-		uint16_t nusRecKeyOut;
 	
     switch (p_ble_evt->header.evt_id)
     {
@@ -766,18 +685,6 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 }
 
 
-
-/**@brief Function for starting advertising.
- */
-void ble_nus_advertising_start(void)
-{
-    ret_code_t err_code;
-
-    err_code = ble_advertising_start(BLE_ADV_MODE_DIRECTED);
-//		SEGGER_RTT_printf(0,"Adv start err: %d \r\n", err_code);
-//		nrf_delay_ms(1000);
-		APP_ERROR_CHECK(err_code);
-}
 
 static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 {
@@ -918,7 +825,6 @@ static void buttons_leds_init(bool * p_erase_bonds)
  */
 static void power_manage(void)
 {
-    SEGGER_RTT_printf(0,"In power manage");
 		uint32_t err_code = sd_app_evt_wait();
     APP_ERROR_CHECK(err_code);
 }
@@ -929,10 +835,8 @@ static void power_manage(void)
 int main(void)
 {
 		uint32_t err_code;
-		bool erase_bonds;
-		uint32_t* data;
 		bsp_board_leds_init();
-		nrf_delay_ms(5000);
+		nrf_delay_ms(1000); // To allow for bounce during battery insertion 
 	
 		// Initialize.
 		log_init();
@@ -943,19 +847,15 @@ int main(void)
 		APP_ERROR_CHECK(err_code);
 
 		SEGGER_RTT_printf(0,"Initializing Timers \n");
-		//uart_init();
 		timers_init();
-		tstamp_init();
 		SEGGER_RTT_printf(0,"Timers Initialized \n");
 
-//		buttons_leds_init(&erase_bonds);	
 		ble_stack_init();	
 		gap_params_init();
 		SEGGER_RTT_printf(0,"ble stack Initialized \n");		
 		
-		
+		adc_configure();
 		advertising_init();
-//		ble_nus_advertising_init();		
 		SEGGER_RTT_printf(0,"Adv Initialized \n");
 		
 		services_init();
@@ -971,8 +871,7 @@ int main(void)
 		timers_start();
 		SEGGER_RTT_printf(0,"Times Start.. \n");
 
-		err_code = advertising_start();
-		//		ble_nus_advertising_start();
+		//err_code = advertising_start();
 		SEGGER_RTT_printf(0,"adv start err: %d \n",err_code);
 		APP_ERROR_CHECK(err_code);
 		SEGGER_RTT_printf(0,"Started Advertising \n");
@@ -985,29 +884,40 @@ int main(void)
 		APP_ERROR_CHECK(err_code);
 		// POLL FOR INIT CALLBACK
 		while(!initFlag); 
-		//nrf_delay_ms(2000);
+		initFlag = false;
+
+		#ifdef DEVICE_INITIALIZATION
+
+		SEGGER_RTT_printf(0,"\r\n\n----Device Flash Init Begin----\n");
+		
 		err_code = fds_file_delete(FILE_ID);
 		SEGGER_RTT_printf(0,"file del err: %d \n",err_code);
-		APP_ERROR_CHECK(err_code);		
-
-		err_code = fds_gc();
-		SEGGER_RTT_printf(0,"gc err: %d \n",err_code);		
+		APP_ERROR_CHECK(err_code);				
 		SEGGER_RTT_printf(0,"\r\n\n");
-		nrf_delay_ms(1000);
-		APP_ERROR_CHECK(err_code);
-		
+		// Wait for GC to complete on FILE
+		while(!gcDone);
+		gcDone = false;
 
-		SEGGER_RTT_printf(0,"Test writing data to RAM:\r\n");
-		uint32_t testData[] = {0x46464646,0x46464646,0x46464646};
-		err_code = fds_write(FILE_ID, REC_KEY_START, testData, 3);
+		SEGGER_RTT_printf(0,"Writing data to LASTSEEN record:\r\n");
+		uint32_t testData[] = {0x00002223,0x00000000,0x00000000};
+		err_code = fds_write(FILE_ID, REC_KEY_LASTSEEN, testData, 3);
+		APP_ERROR_CHECK(err_code);
+		// Wait for write done event
+		while(!writeFlag);
+		writeFlag = false;
+
+		SEGGER_RTT_printf(0,"Test writing data to Starting RECKEY:\r\n");
+		uint32_t testData1[] = {0x46464646,0x46464646,0x46464646};
+		err_code = fds_write(FILE_ID, REC_KEY_START, testData1, 3);
 		APP_ERROR_CHECK(err_code); 
+		// Wait for write done event
+		//while(!writeFlag);
+		//writeFlag = false;
+	
+		SEGGER_RTT_printf(0,"----Device Flash Init Done----\r\n\n\n");
+		#endif
 		
-		//		while (write_flag==0);
-		
-		//err_code = fds_read(FILE_ID, REC_KEY_START, data);
-		//APP_ERROR_CHECK(err_code);
-		
-		
+		tstamp_reckey_init();		
 
     // Enter main loop.
     for (;; )

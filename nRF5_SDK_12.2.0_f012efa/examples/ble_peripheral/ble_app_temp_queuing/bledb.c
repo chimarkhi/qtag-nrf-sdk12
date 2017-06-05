@@ -9,12 +9,10 @@
 #include "app_util.h"
 #include "nrf_delay.h"
 #include "ble_nus.h"
-#include "main.h"
 
 volatile uint8_t nus_tx_complete = 0;
-volatile uint8_t write_flag = 0;
 
-uint32_t recCounter = 0;
+uint32_t recCounter;
 
 void nus_tx_flag_set(void)
 {
@@ -26,10 +24,21 @@ uint16_t get_recKey(void)
 	return recCounter+REC_KEY_START;
 }
 
+void recCounter_init(uint16_t reckey_init)
+{
+	recCounter = reckey_init - REC_KEY_START;
+}
+
+
 void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
 {
 		uint32_t data[] = {0,0,0};
 		uint8_t dataLen;
+		uint16_t fileID = p_fds_evt->write.file_id;
+		uint16_t recKey = p_fds_evt->write.record_key;
+		uint16_t recID = p_fds_evt->write.record_id;
+
+		
     switch (p_fds_evt->id)
     {
         case FDS_EVT_INIT:
@@ -42,29 +51,48 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
 				case FDS_EVT_WRITE:
 						if (p_fds_evt->result == FDS_SUCCESS)
 						{
-							write_flag = 1;
-							//SEGGER_RTT_printf(0,"write flag set \n");
-							fds_read(FILE_ID,REC_KEY_START+recCounter, data, dataLen);
-							SEGGER_RTT_printf(0,"Write finished. recCounter: %d \r\n\n\n", recCounter);
-							++recCounter;
+							writeFlag = 1;
+							SEGGER_RTT_printf(0,"Wrote file,rec,recID :%04x,%04x,%d  recCounter: %d \r\n", 
+																fileID, recKey, recID, recCounter);
+							fds_read(fileID, recKey, data, dataLen);
+
+							if (p_fds_evt->write.record_key != REC_KEY_LASTSEEN)
+							{
+								++recCounter;
+							}
+						}
+						else
+						{
+							SEGGER_RTT_printf(0,"FDS write failed for file,record: %04x,%04x", fileID, recKey);
 						}
 						break;
+				case FDS_EVT_UPDATE:
+						if (p_fds_evt->result == FDS_SUCCESS)
+						{
+							SEGGER_RTT_printf(0,"Updated file,record,recID: %04x,%04x,%d \r\n", fileID, recKey, recID);
+							fds_read(fileID, recKey, data, dataLen);
+						}
+						break;						
 				case FDS_EVT_DEL_FILE:
 						if (p_fds_evt->result == FDS_SUCCESS)
 						{
-							SEGGER_RTT_printf(0,"File Deleted\n");
+							SEGGER_RTT_printf(0,"File Deleted and GC being run\n");
+							fds_gc();
 						}
 						break;		
 				case FDS_EVT_GC:
 						if (p_fds_evt->result == FDS_SUCCESS)
 						{
 							SEGGER_RTT_printf(0,"GC Done\n");
+							gcDone = 1;
 						}
 						break;		
         default:
             break;
     }
 }
+
+
 
 ret_code_t fds_write(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t dataLen)
 {
@@ -80,33 +108,71 @@ ret_code_t fds_write(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t
 		
 		record_chunk.p_data         = &dataPacket_test[0];
 		record_chunk.length_words   = dataLen;
-		SEGGER_RTT_printf(0,"Write dataIn: %08x, %08x, %08x, Size:%d\r\n", data[0],data[1],data[2],record_chunk.length_words);
-	// Set up record.
+		// SEGGER_RTT_printf(0,"Write dataIn: %08x, %08x, %08x, Size:%d\r\n", data[0],data[1],data[2],record_chunk.length_words);
+		// Set up record.
 		record.file_id              = fileID;
-		record.key              	  = REC_KEY_START + recCounter;
+		record.key              	  = recKey;
 		record.data.p_chunks        = &record_chunk;
 		record.data.num_chunks      = 1;
 				
 		ret_code_t ret = fds_record_write(&record_desc, &record);
 
+		//Handle exceptions like flash full etc : FDS_ERR_*	
 		if (ret != FDS_SUCCESS)
 		{
-				return ret;
+			switch (ret)
+			{
+				case FDS_ERR_OPERATION_TIMEOUT:
+				case FDS_ERR_NO_SPACE_IN_FLASH:
+					SEGGER_RTT_printf(0,"No space in flash, running GC\r\n");
+					//fds_file_delete(fileID);
+					fds_gc();
+					while(!gcDone);
+					gcDone = false;
+					//ret = fds_write(fileID, recKey, data, dataLen);
+					return ret;					
+				case FDS_ERR_NO_PAGES:
+				case FDS_ERR_BUSY:
+				case FDS_ERR_INTERNAL:
+				default:
+					ret = FDS_ERR_INTERNAL;
+          break;
+			}
 		}
-		SEGGER_RTT_printf(0,"Wrote recordID:%d \r\n",record_desc.record_id);
+		
+		//SEGGER_RTT_printf(0,"Wrote recordID:%d \r\n",record_desc.record_id);
 		return NRF_SUCCESS;
 }
 
-ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t dataLen)
+
+ret_code_t fds_update(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t dataLen)
 {
+		fds_record_t        record;
 		fds_flash_record_t  flash_record;
 		fds_record_desc_t   record_desc;
+		fds_record_chunk_t  record_chunk;
+
 		fds_find_token_t    ftok ={0};//Important, make sure you zero init the ftok token
 		uint32_t err_code;
 		uint32_t *dataTemp;
-//		recKey = get_recKey();
+
+		// Set up data.
+		static uint32_t dataPacket_test[3];
+		for(uint8_t i = 0; i < dataLen; i++) {
+		dataPacket_test[i] = data[i];
+		}
 		
-		SEGGER_RTT_printf(0,"Search for FILEID: %04x, RECKEY: %04x \r\n",fileID, recKey);
+		record_chunk.p_data         = &dataPacket_test[0];
+		record_chunk.length_words   = dataLen;
+		//SEGGER_RTT_printf(0,"Write dataIn: %08x, %08x, %08x, Size:%d\r\n", data[0],data[1],data[2],record_chunk.length_words);
+		
+		// Set up record.
+		record.file_id              = fileID;
+		record.key              	  = recKey;
+		record.data.p_chunks        = &record_chunk;
+		record.data.num_chunks      = 1;
+		
+		//SEGGER_RTT_printf(0,"Updating File/Rec : %04x/%04x",fileID, recKey);
 		// Loop until all records with the given key and file ID have been found.
 		while (fds_record_find(fileID, recKey, &record_desc, &ftok) == FDS_SUCCESS)
 		{
@@ -117,7 +183,38 @@ ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t d
 					return err_code;		
 				}
 				
-				SEGGER_RTT_printf(0,"Data read from recordID %d = ",record_desc.record_id);
+				err_code = fds_record_update(&record_desc,&record);
+				if (err_code != FDS_SUCCESS)
+				{
+					return err_code;	
+				}
+		}				
+		return NRF_SUCCESS;
+}
+
+
+ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t dataLen)
+{
+		fds_flash_record_t  flash_record;
+		fds_record_desc_t   record_desc;
+		fds_find_token_t    ftok ={0};//Important, make sure you zero init the ftok token
+		uint32_t err_code;
+		uint32_t *dataTemp;
+//		recKey = get_recKey();
+		
+		//SEGGER_RTT_printf(0,"Search for FILEID: %04x, RECKEY: %04x \r\n",fileID, recKey);
+		// Loop until all records with the given key and file ID have been found.
+		while (fds_record_find(fileID, recKey, &record_desc, &ftok) == FDS_SUCCESS)
+		{
+				err_code = fds_record_open(&record_desc, &flash_record);
+				if ( err_code != FDS_SUCCESS)
+				{
+					SEGGER_RTT_printf(0,"error opening record: %u\n", err_code);
+					return err_code;		
+				}
+				
+				SEGGER_RTT_printf(0,"Data read back from file,rec,recID [%04x,%04x,%d] = ",
+														fileID, recKey, record_desc.record_id);
 				dataTemp = (uint32_t *) flash_record.p_data;
 				for (uint8_t i=0;i<flash_record.p_header->tl.length_words;i++)
 				{
@@ -125,7 +222,7 @@ ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t d
 					data[i] = dataTemp[i];
 				}
 				dataLen = flash_record.p_header->tl.length_words;
-				SEGGER_RTT_printf(0,"dataLen=%d\r\n",dataLen);
+				SEGGER_RTT_printf(0,"\r\n");
 				// Access the record through the flash_record structure.
 				// Close the record when done.
 				err_code = fds_record_close(&record_desc);
@@ -136,6 +233,7 @@ ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t d
 		}
 		return NRF_SUCCESS;
 }
+
 
 ret_code_t fds_find_and_delete (uint16_t fileID, uint16_t recKey)
 {
@@ -159,6 +257,7 @@ ret_code_t fds_find_and_delete (uint16_t fileID, uint16_t recKey)
 		}
 		return NRF_SUCCESS;
 }
+
 
 ret_code_t fds_bledb_init (void)
 {
@@ -196,19 +295,24 @@ ret_code_t fds_cleanup(uint32_t fileID)
 
 ret_code_t dataToDB (uint16_t fileID, uint16_t recKey, uint32_t * data, uint16_t dataLen)
 {
-		fileID = FILE_ID;
 		recKey = REC_KEY_START + recCounter;
-		SEGGER_RTT_printf(0,"dataToDB dataArray : %08x %08x %08x\r\n", data[0], data[1], data[2]);
+		//SEGGER_RTT_printf(0,"dataToDB dataArray : %08x %08x %08x\r\n", data[0], data[1], data[2]);
 		ret_code_t ret = fds_write(fileID, recKey, data, dataLen);		
 
-	//	Handle exceptions like flash full etc : FDS_ERR_*	
+		//Handle exceptions like flash full etc : FDS_ERR_*	
 		if (ret != FDS_SUCCESS)
 		{
 			switch (ret)
 			{
 				case FDS_ERR_OPERATION_TIMEOUT:
 				case FDS_ERR_NO_SPACE_IN_FLASH:
+					SEGGER_RTT_printf(0,"No space in flash, running GC\r\n");
 					ret = fds_cleanup(fileID);
+					//fds_gc();
+					//while(!gcDone);
+					//gcDone = false;
+					//ret = fds_write(fileID, recKey, data, dataLen);
+					return ret;
 					break;
 				case FDS_ERR_NO_PAGES:
 				case FDS_ERR_BUSY:
@@ -293,77 +397,3 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 			}
 		return NRF_SUCCESS;
 }
-
-
-ret_code_t payload_to_central_maxthroughput (ble_nus_t * p_nus, uint16_t nusRecKey)
-{
-		uint16_t recKey ;
-		uint32_t data[] = {0,0,0};
-		uint16_t dataLen;
-		ret_code_t ret;
-		recKey = nusRecKey;
-		
-		while (recKey-nusRecKey <10)
-		{		
-			ret = fds_read(FILE_ID, recKey, data, dataLen);
-			//SEGGER_RTT_printf(0,"read err %d\r\n", ret);
-			
-			//	Handle exceptions like flash full etc : FDS_ERR_*	
-			if (ret != FDS_SUCCESS)
-			{
-				SEGGER_RTT_printf(0,"Record read error: %d", ret);
-				nrf_delay_ms(1000);
-				switch (ret)
-				{
-					case FDS_ERR_OPERATION_TIMEOUT:
-					case FDS_ERR_RECORD_TOO_LARGE:
-					case FDS_ERR_NO_SPACE_IN_FLASH:
-						SEGGER_RTT_printf(0,"No space in flash");
-						break;
-					case FDS_ERR_NO_PAGES:
-					case FDS_ERR_BUSY:
-					case FDS_ERR_INTERNAL:
-					default:
-						ret = FDS_ERR_INTERNAL;
-						break;
-				}
-			}
-			else {
-				uint8_t *p_dataPacket = (uint8_t *)data;
-				//uint8_t dataLengthInBytes = dataLen*4;
-				uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
-				uint8_t dataByteArray[dataLengthInBytes];
-				for (uint8_t i=0;i<dataLengthInBytes;i++){
-					dataByteArray[i] = p_dataPacket[i];
-					//SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
-				}
-
-				ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
-				if (ret == BLE_ERROR_NO_TX_PACKETS ||
-            ret == NRF_ERROR_INVALID_STATE || 
-            ret == BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-        {
-						SEGGER_RTT_printf(0,"No TX Packets left err: %d",ret);
-						break;
-        }
-        else if (ret != NRF_SUCCESS) 
-        {
-            return ret;
-        }					
-				else 
-				{	
-					SEGGER_RTT_printf(0,"Data sent over NUS:");
-					for (uint8_t i=0;i<dataLengthInBytes;i++)
-					{
-						SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
-					}
-					SEGGER_RTT_printf(0,"\r\n");
-					recKey++;
-					nusRecKey = recKey;
-				}
-			}
-		}
-		
-		return NRF_SUCCESS;
-}
-
