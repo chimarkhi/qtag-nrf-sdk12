@@ -3186,7 +3186,7 @@
 // <i> @ref FDS_VIRTUAL_PAGE_SIZE * 4 bytes.
 
 #ifndef FDS_VIRTUAL_PAGES
-#define FDS_VIRTUAL_PAGES 2
+#define FDS_VIRTUAL_PAGES 51
 #endif
 
 // <o> FDS_VIRTUAL_PAGE_SIZE  - The size of a virtual page of flash memory, expressed in number of 4-byte words.
@@ -3198,7 +3198,7 @@
 // <2048=> 2048 
 
 #ifndef FDS_VIRTUAL_PAGE_SIZE
-#define FDS_VIRTUAL_PAGE_SIZE 1024
+#define FDS_VIRTUAL_PAGE_SIZE 2048
 #endif
 
 #endif //FDS_ENABLED
@@ -3245,13 +3245,13 @@
  
 
 #ifndef HARDFAULT_HANDLER_ENABLED
-#define HARDFAULT_HANDLER_ENABLED 1
+#define HARDFAULT_HANDLER_ENABLED 0
 #endif
 
 // <e> HCI_MEM_POOL_ENABLED - hci_mem_pool - memory pool implementation used by HCI
 //==========================================================
 #ifndef HCI_MEM_POOL_ENABLED
-#define HCI_MEM_POOL_ENABLED 0
+#define HCI_MEM_POOL_ENABLED 1
 #endif
 #if  HCI_MEM_POOL_ENABLED
 // <o> HCI_TX_BUF_SIZE - TX buffer size in bytes. 
