@@ -63,12 +63,12 @@
 #define PERIPHERAL_LINK_COUNT           1                                 /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
 #define TSTAMP_INTERVAL_IN_MS						1000
-#define ADV_INTERVAL_IN_MS							2000
+#define ADV_INTERVAL_IN_MS							200
 #define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                 /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		300
+#define LOGINTERVAL_ADVINTERVAL_RATIO		1
 #define ADV_TIMEOUT_IN_SECONDS      		180                               /**< The advertising timeout (in units of seconds). */
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
@@ -290,11 +290,12 @@ void dataToDB_timer_timeout_handler(void * p_context)
 															 
 		SEGGER_RTT_printf(0,"\r\n\n\nData to DB: RecKey %08x, time %08x, data %08x\r\n", dataPacket[0], dataPacket[1], dataPacket[2]);
 		uint32_t err_code = dataToDB(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
-		
+		while(!writeFlag);
+		writeFlag = false;
 		// if data saved successfully, update the last seen reckey and tstamp in flash												 
 		if (err_code == NRF_SUCCESS)
 		{
-			//err_code = fds_update(FILE_ID, REC_KEY_LASTSEEN, dataPacket, WORDLEN_DATAPACKET);			
+			err_code = fds_update(FILE_ID, REC_KEY_LASTSEEN, dataPacket, WORDLEN_DATAPACKET);			
 		}
 		//SEGGER_RTT_printf(0,"FDS write error : %d", err_code); 
 }

@@ -14,6 +14,9 @@
 
 */_build/*
 
-nrf51_sdk*
-nrf5_SDK*
-nrf5x_MDK*
+*.msi
+
+nrf51_sdk_v6_1_0_b2ec2e6*
+nrf51_sdk_v5_2_0_39364_01Jan17*
+nrf51_sdk_v5_2_0_39364*
+nRF5_SDK_11.0.0_89a8197*

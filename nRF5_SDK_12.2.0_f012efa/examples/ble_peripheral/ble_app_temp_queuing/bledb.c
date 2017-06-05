@@ -117,30 +117,11 @@ ret_code_t fds_write(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t
 				
 		ret_code_t ret = fds_record_write(&record_desc, &record);
 
-		//Handle exceptions like flash full etc : FDS_ERR_*	
 		if (ret != FDS_SUCCESS)
 		{
-			switch (ret)
-			{
-				case FDS_ERR_OPERATION_TIMEOUT:
-				case FDS_ERR_NO_SPACE_IN_FLASH:
-					SEGGER_RTT_printf(0,"No space in flash, running GC\r\n");
-					//fds_file_delete(fileID);
-					fds_gc();
-					while(!gcDone);
-					gcDone = false;
-					//ret = fds_write(fileID, recKey, data, dataLen);
-					return ret;					
-				case FDS_ERR_NO_PAGES:
-				case FDS_ERR_BUSY:
-				case FDS_ERR_INTERNAL:
-				default:
-					ret = FDS_ERR_INTERNAL;
-          break;
-			}
-		}
-		
-		//SEGGER_RTT_printf(0,"Wrote recordID:%d \r\n",record_desc.record_id);
+				return ret;
+		}		
+		SEGGER_RTT_printf(0,"Wrote recordID:%d \r\n",record_desc.record_id);
 		return NRF_SUCCESS;
 }
 
@@ -186,6 +167,7 @@ ret_code_t fds_update(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_
 				err_code = fds_record_update(&record_desc,&record);
 				if (err_code != FDS_SUCCESS)
 				{
+					SEGGER_RTT_printf(0,"Update error : %d",err_code);
 					return err_code;	
 				}
 		}				

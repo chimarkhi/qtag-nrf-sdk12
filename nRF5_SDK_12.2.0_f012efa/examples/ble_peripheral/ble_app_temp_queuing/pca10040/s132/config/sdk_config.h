@@ -3186,7 +3186,7 @@
 // <i> @ref FDS_VIRTUAL_PAGE_SIZE * 4 bytes.
 
 #ifndef FDS_VIRTUAL_PAGES
-#define FDS_VIRTUAL_PAGES 51
+#define FDS_VIRTUAL_PAGES 2
 #endif
 
 // <o> FDS_VIRTUAL_PAGE_SIZE  - The size of a virtual page of flash memory, expressed in number of 4-byte words.
@@ -3198,7 +3198,7 @@
 // <2048=> 2048 
 
 #ifndef FDS_VIRTUAL_PAGE_SIZE
-#define FDS_VIRTUAL_PAGE_SIZE 2048
+#define FDS_VIRTUAL_PAGE_SIZE 1024
 #endif
 
 #endif //FDS_ENABLED
@@ -3336,7 +3336,7 @@
 // <e> HCI_TRANSPORT_ENABLED - hci_transport - HCI transport
 //==========================================================
 #ifndef HCI_TRANSPORT_ENABLED
-#define HCI_TRANSPORT_ENABLED 0
+#define HCI_TRANSPORT_ENABLED 1
 #endif
 #if  HCI_TRANSPORT_ENABLED
 // <o> HCI_MAX_PACKET_SIZE_IN_BITS - Maximum size of a single application packet in bits. 
