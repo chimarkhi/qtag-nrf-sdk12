@@ -8,9 +8,18 @@
 #include "main.h"
 
 #define FILE_ID 							0x1111
-#define REC_KEY_START     		0x2222
-#define REC_KEY_LASTSEEN   		0x0002
+#define REC_KEY_START     		0x2222				// Starting Record Key
+#define REC_KEY_MAX	     			0xEEEE				// Maximum Record Key
+#define REC_KEY_LASTSEEN   		0xFFFE				// Record Key where copy of latest data-point is stored
+#define REC_KEY_EOM						0xFFFD				// Record Key with NUS end of message data
+#define DATA_POINTS						128						// Max data points the device can store
+#define FREQ_OF_RUN_GC				25						// Run GC after every FREQ_OF_RUN_GC records are deleted
 #define WORDLEN_DATAPACKET		3
+
+#define BLEDB_ERROR_BASE			0
+
+#define BLEDB_SUCCESS 							(BLEDB_ERROR_BASE +0)
+#define BLEDB_ERROR_NO_RECORD_FOUND (BLEDB_ERROR_BASE +1)
 
 extern uint16_t nusRecKey;
 extern volatile bool initFlag;
@@ -68,4 +77,6 @@ uint16_t get_recKey(void);
 	
 void recCounter_init(uint16_t reckey_init);
 
-ret_code_t fds_update(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t dataLen);
+void wait_for_fds_evt(fds_evt_id_t id);
+
+ret_code_t save_lastseen(uint16_t fileID, uint16_t recKey);

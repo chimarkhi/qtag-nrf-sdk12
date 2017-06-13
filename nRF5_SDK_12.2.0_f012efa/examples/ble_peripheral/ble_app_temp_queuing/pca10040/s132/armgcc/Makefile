@@ -195,7 +195,7 @@ CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin --short-enums 
 CFLAGS += -DNRF_LOG_USES_RTT=1
-CFLAGS += -DDEVICE_INITIALIZATION
+CFLAGS += -DINIT_DEVICE
 
 # C++ flags common to all targets
 CXXFLAGS += \

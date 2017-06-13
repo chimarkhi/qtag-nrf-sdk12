@@ -224,7 +224,7 @@ void indicate_advertising(void)
 
 void advdata_update_timer_timeout_handler(void * p_context)
 {
-  advdata_update();	
+	advdata_update();
 	indicate_advertising();
 }
 
@@ -243,13 +243,14 @@ void tstamp_timer_timeout_handler(void * p_context)
  */
 void tstamp_reckey_init()
 {
-		uint32_t data[] = {0,0,0};
-		uint16_t dataLen;
+		uint32_t data[] 	= {0,0,0};
+		uint16_t dataLen 	= sizeof(data);
 		uint32_t err_code;
-
 		err_code = fds_read(FILE_ID, REC_KEY_LASTSEEN, data, dataLen);
 		
-		if ((data[0]<0x0000FFFF) && (data[0] > (uint32_t)REC_KEY_START))
+		if ((data[0] <  (uint32_t)REC_KEY_MAX) 			& 
+			  (data[0] >= (uint32_t)REC_KEY_START ) 	&
+				err_code == FDS_SUCCESS	)
 		{
 			tstamp_sec = data[1];
 			recCounter_init((uint16_t)data[0]);
@@ -259,6 +260,8 @@ void tstamp_reckey_init()
 			tstamp_sec = 0;
 			recCounter_init(REC_KEY_START);
 		}
+		
+		SEGGER_RTT_printf(0,"Starting from RECKEY,tstamp: [%04x,%08x]\r\n",(uint16_t)data[0],tstamp_sec);
 }
 
 
@@ -290,14 +293,15 @@ void dataToDB_timer_timeout_handler(void * p_context)
 															 
 		SEGGER_RTT_printf(0,"\r\n\n\nData to DB: RecKey %08x, time %08x, data %08x\r\n", dataPacket[0], dataPacket[1], dataPacket[2]);
 		uint32_t err_code = dataToDB(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
-		while(!writeFlag);
-		writeFlag = false;
 		// if data saved successfully, update the last seen reckey and tstamp in flash												 
-		if (err_code == NRF_SUCCESS)
+
+		if (err_code == NRF_SUCCESS) 
 		{
-			err_code = fds_update(FILE_ID, REC_KEY_LASTSEEN, dataPacket, WORDLEN_DATAPACKET);			
+//			wait_for_fds_evt(FDS_EVT_WRITE);
+			err_code = fds_find_and_delete(FILE_ID, REC_KEY_LASTSEEN);
+			err_code = fds_write(FILE_ID, REC_KEY_LASTSEEN, dataPacket, WORDLEN_DATAPACKET);
 		}
-		//SEGGER_RTT_printf(0,"FDS write error : %d", err_code); 
+		else	SEGGER_RTT_printf(0,"DataToDB error : %d", err_code); 
 }
 
 /**@brief Function for the Timer initialization.
@@ -599,7 +603,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 							err_code = payload_to_central_async(&m_nus, nusRecKey);
 						}
 						else if(nusRecKey == nusCurrentKey){
-							err_code = payload_to_central_async(&m_nus, REC_KEY_START);
+							err_code = payload_to_central_async(&m_nus, REC_KEY_EOM);
 							if (err_code != NRF_SUCCESS){	
 								SEGGER_RTT_printf(0,"Err sending eom package: %d\r\n", err_code);
 							}
@@ -611,7 +615,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 						break; // BLE_EVT_TX_COMPLETE
 				
         case BLE_GAP_EVT_DISCONNECTED:
-            nrf_gpio_pin_write(18,0);	// Minew S1 v1.0 Red LED
+            nrf_gpio_pin_write(18,0);				// Minew S1 v1.0 Red LED
             //nrf_gpio_pin_write(18,0);			// Minew S1 v0.9 Red LED
 						err_code = advertising_start();
 						SEGGER_RTT_printf(0,"Adv restarted after disconnet errcode: %d\r\n\n",err_code);
@@ -841,7 +845,7 @@ int main(void)
 	
 		// Initialize.
 		log_init();
-		SEGGER_RTT_printf(0,"Initializing ...\n");
+		SEGGER_RTT_printf(0,"\r\n\n\n\nInitializing ...\n");
 
 		APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, false);
 		err_code = bsp_init(BSP_INIT_LED, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER), NULL);
@@ -854,7 +858,7 @@ int main(void)
 		ble_stack_init();	
 		gap_params_init();
 		SEGGER_RTT_printf(0,"ble stack Initialized \n");		
-		
+			
 		adc_configure();
 		advertising_init();
 		SEGGER_RTT_printf(0,"Adv Initialized \n");
@@ -868,7 +872,49 @@ int main(void)
 		err_code = twi_init(&twi);
 		SEGGER_RTT_printf(0,"SHT31's I2C Initialized \n");
 
+		// Wait for fds to be initialized before any read/write
+		err_code =fds_bledb_init();
+		SEGGER_RTT_printf(0,"fds init err: %d \n",err_code);
+		APP_ERROR_CHECK(err_code);
+		// POLL FOR INIT CALLBACK
+		wait_for_fds_evt(FDS_EVT_INIT);
+		
+		
+		#ifdef INIT_DEVICE
+
+		SEGGER_RTT_printf(0,"\r\n\n----Device Flash Init Begin----\n");
+		
+		err_code = fds_file_delete(FILE_ID);
+		SEGGER_RTT_printf(0,"file del err: %d \n",err_code);
+		APP_ERROR_CHECK(err_code);				
+		SEGGER_RTT_printf(0,"\r\n\n");
+		// Wait for GC to complete on FILE
+		wait_for_fds_evt(FDS_EVT_GC);
+		
+		SEGGER_RTT_printf(0,"Test writing data to EOM RECKEY:\r\n");
+		uint32_t testData1[] = {0x46464646,0x46464646,0x46464646};
+		err_code = fds_write(FILE_ID, REC_KEY_EOM, testData1, 3);
+		APP_ERROR_CHECK(err_code); 
+		// Wait for write done event
+		wait_for_fds_evt(FDS_EVT_WRITE);
+
+
+		SEGGER_RTT_printf(0,"Writing data to LASTSEEN record:\r\n");
+		uint32_t testData[] = {0x00002223,0x00000000,0x00000000};
+		err_code = fds_write(FILE_ID, REC_KEY_LASTSEEN, testData, 3);
+		APP_ERROR_CHECK(err_code);
+		// Wait for write done event
+		wait_for_fds_evt(FDS_EVT_WRITE);
+		
+		SEGGER_RTT_printf(0,"----Device Flash Init Done----\r\n\n\n");
+		#endif
+
+		nrf_delay_ms(1000);
+		
+		tstamp_reckey_init();		
+
 		// Start execution.
+		nrf_delay_ms(1000);
 		timers_start();
 		SEGGER_RTT_printf(0,"Times Start.. \n");
 
@@ -879,46 +925,6 @@ int main(void)
 		
 		bsp_board_leds_on();
 		
-		// Wait for fds to be initialized before any read/write
-		err_code =fds_bledb_init();
-		SEGGER_RTT_printf(0,"fds init err: %d \n",err_code);
-		APP_ERROR_CHECK(err_code);
-		// POLL FOR INIT CALLBACK
-		while(!initFlag); 
-		initFlag = false;
-
-		#ifdef DEVICE_INITIALIZATION
-
-		SEGGER_RTT_printf(0,"\r\n\n----Device Flash Init Begin----\n");
-		
-		err_code = fds_file_delete(FILE_ID);
-		SEGGER_RTT_printf(0,"file del err: %d \n",err_code);
-		APP_ERROR_CHECK(err_code);				
-		SEGGER_RTT_printf(0,"\r\n\n");
-		// Wait for GC to complete on FILE
-		while(!gcDone);
-		gcDone = false;
-
-		SEGGER_RTT_printf(0,"Writing data to LASTSEEN record:\r\n");
-		uint32_t testData[] = {0x00002223,0x00000000,0x00000000};
-		err_code = fds_write(FILE_ID, REC_KEY_LASTSEEN, testData, 3);
-		APP_ERROR_CHECK(err_code);
-		// Wait for write done event
-		while(!writeFlag);
-		writeFlag = false;
-
-		SEGGER_RTT_printf(0,"Test writing data to Starting RECKEY:\r\n");
-		uint32_t testData1[] = {0x46464646,0x46464646,0x46464646};
-		err_code = fds_write(FILE_ID, REC_KEY_START, testData1, 3);
-		APP_ERROR_CHECK(err_code); 
-		// Wait for write done event
-		//while(!writeFlag);
-		//writeFlag = false;
-	
-		SEGGER_RTT_printf(0,"----Device Flash Init Done----\r\n\n\n");
-		#endif
-		
-		tstamp_reckey_init();		
 
     // Enter main loop.
     for (;; )
