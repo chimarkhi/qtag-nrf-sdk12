@@ -153,7 +153,6 @@ ret_code_t save_lastseen(uint16_t fileID, uint16_t recKey)
 		uint32_t *dataTemp;
 
 		
-		//SEGGER_RTT_printf(0,"Updating File/Rec : %04x/%04x",fileID, recKey);
 		// Loop until all records with the given key and file ID have been found.
 		while (fds_record_find(fileID, recKey, &record_desc, &ftok) == FDS_SUCCESS)
 		{
@@ -193,9 +192,7 @@ ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t d
 		fds_find_token_t    ftok ={0};//Important, make sure you zero init the ftok token
 		uint32_t err_code;
 		uint32_t *dataTemp;
-//		recKey = get_recKey();
 		
-		//SEGGER_RTT_printf(0,"Search for FILEID: %04x, RECKEY: %04x \r\n",fileID, recKey);
 		// Loop until all records with the given key and file ID have been found.
 		while (fds_record_find(fileID, recKey, &record_desc, &ftok) == FDS_SUCCESS)
 		{
@@ -287,6 +284,7 @@ ret_code_t fds_cleanup(uint32_t fileID)
 ret_code_t dataToDB (uint16_t fileID, uint16_t recKey, uint32_t * data, uint16_t dataLen)
 {
 		recKey = (recCounter % DATA_POINTS) + REC_KEY_START;
+		
 		//SEGGER_RTT_printf(0,"dataToDB dataArray : %08x %08x %08x\r\n", data[0], data[1], data[2]);
 		ret_code_t ret = fds_find_and_delete(fileID, recKey);
 		if (ret == FDS_SUCCESS)
@@ -343,12 +341,20 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 		uint16_t dataLen;
 		ret_code_t ret;
 		uint16_t recKey_current = get_recKey();
-		recKey = nusRecKey;
+
+		// Map inbound nusRecKey to a record in the DB		
+		if (nusRecKey != REC_KEY_EOM)  		
+		{	
+			recKey = ((nusRecKey-REC_KEY_START) % DATA_POINTS) + REC_KEY_START;
+		}
+		else
+		{
+			recKey = nusRecKey;
+		}
 		
-		if (recKey < recKey_current)
+		if ((recKey < recKey_current) | (recKey == REC_KEY_EOM)) 
 		{		
 			ret = fds_read(FILE_ID, recKey, data, dataLen);
-			//SEGGER_RTT_printf(0,"read err %d\r\n", ret);
 			
 			//	Handle exceptions like flash full etc : FDS_ERR_*	
 			if (ret != FDS_SUCCESS)
@@ -358,17 +364,20 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 				{
 					case FDS_ERR_OPERATION_TIMEOUT:
 						SEGGER_RTT_printf(0,"RECKEY recKey not found in DB\r\n", ret);
+						return ret;
 					default:
 						ret = FDS_ERR_INTERNAL;
 						break;
 				}
 			}
-			else {
+			else 
+			{
 				uint8_t *p_dataPacket = (uint8_t *)data;
 				//uint8_t dataLengthInBytes = dataLen*4;
 				uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
 				uint8_t dataByteArray[dataLengthInBytes];
-				for (uint8_t i=0;i<dataLengthInBytes;i++){
+				for (uint8_t i=0;i<dataLengthInBytes;i++)
+				{
 					dataByteArray[i] = p_dataPacket[i];
 					//SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
 				}
@@ -381,11 +390,12 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 				}
 					
 				SEGGER_RTT_printf(0,"Data sent over NUS:");
-				for (uint8_t i=0;i<dataLengthInBytes;i++){
+				for (uint8_t i=0;i<dataLengthInBytes;i++)
+				{
 					SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
 				}
 			}
-			}
+		}
 		return NRF_SUCCESS;
 }
 

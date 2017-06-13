@@ -57,19 +57,20 @@
 #include "nrf_drv_twi.h"
 #include "sht31.h"
 #include "battery_level.h"
+#include "ble_tbs.h"
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2        /**< Reply when unsupported features are requested. */
 #define CENTRAL_LINK_COUNT              0                                 /**< Number of central links used by the application. When changing this number remember to adjust the RAM settings*/
 #define PERIPHERAL_LINK_COUNT           1                                 /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
 #define TSTAMP_INTERVAL_IN_MS						1000
-#define ADV_INTERVAL_IN_MS							200
+#define ADV_INTERVAL_IN_MS							2000
 #define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                 /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		1
-#define ADV_TIMEOUT_IN_SECONDS      		180                               /**< The advertising timeout (in units of seconds). */
+#define LOGINTERVAL_ADVINTERVAL_RATIO		5
+
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
@@ -98,6 +99,8 @@
 static ble_nus_t                        m_nus;                                      /**< Structure to identify the Nordic UART Service. */
 static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
 static nrf_drv_twi_t 										twi = NRF_DRV_TWI_INSTANCE(0);
+
+
 
 // Global variables
 uint16_t nusRecKey;
@@ -390,19 +393,29 @@ static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t lengt
 			}
 			uint16_t startRecKey = p_data[1]<<8|p_data[0];
 			SEGGER_RTT_printf(0,"  Start record : 0x%04x\r\n", startRecKey);
+			nusCurrentKey = get_recKey();
 			
-			if (startRecKey < get_recKey()){
-				nusRecKey = startRecKey;
-				nusCurrentKey = get_recKey();
-				SEGGER_RTT_printf(0,"Stating data transfer\r\n");
+			if (startRecKey < nusCurrentKey)
+			{
+				if (startRecKey > nusCurrentKey - DATA_POINTS) nusRecKey = startRecKey;
+				else nusRecKey = nusCurrentKey - DATA_POINTS;
+
+				SEGGER_RTT_printf(0,"Stating data transfer from %04x\r\n", nusRecKey);
+
 				uint32_t err_code = payload_to_central_async(&m_nus, nusRecKey);
-				
+				if (err_code != FDS_SUCCESS)
+				{
+					switch (err_code)
+					{
+						case FDS_ERR_OPERATION_TIMEOUT:
+							payload_to_central_async(&m_nus, ++nusRecKey);	
+						default:
+							SEGGER_RTT_printf(0,"NUS TX error %d\r\n\n", err_code);
+							break;
+					}
+				}
 			}
-			else{
-				SEGGER_RTT_printf(0,"Input recKey is higher than latest recKey\r\n\n");
-			}
-			
-	//			APP_ERROR_CHECK(err_code);
+			else	SEGGER_RTT_printf(0,"Input recKey is higher than latest recKey\r\n\n");
 }
 /**@snippet [Handling the data received over BLE] */
 
@@ -602,12 +615,15 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 						if (nusRecKey < nusCurrentKey){
 							err_code = payload_to_central_async(&m_nus, nusRecKey);
 						}
-						else if(nusRecKey == nusCurrentKey){
+						else if(nusRecKey == nusCurrentKey)
+						{
 							err_code = payload_to_central_async(&m_nus, REC_KEY_EOM);
-							if (err_code != NRF_SUCCESS){	
+							if (err_code != NRF_SUCCESS)
+							{	
 								SEGGER_RTT_printf(0,"Err sending eom package: %d\r\n", err_code);
 							}
-							else {
+							else 
+							{
 								SEGGER_RTT_printf(0,"eom sent\r\n");
 								nusRecKey++;
 							}
@@ -780,7 +796,8 @@ void bsp_event_handler(bsp_event_t event)
         case BSP_EVENT_SLEEP:
             sleep_mode_enter();
             break;
-
+				case BSP_EVENT_ADVERTISING_START:
+						advertising_start();
         case BSP_EVENT_DISCONNECT:
             err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             if (err_code != NRF_ERROR_INVALID_STATE)
@@ -918,7 +935,7 @@ int main(void)
 		timers_start();
 		SEGGER_RTT_printf(0,"Times Start.. \n");
 
-		//err_code = advertising_start();
+		err_code = advertising_start();
 		SEGGER_RTT_printf(0,"adv start err: %d \n",err_code);
 		APP_ERROR_CHECK(err_code);
 		SEGGER_RTT_printf(0,"Started Advertising \n");
