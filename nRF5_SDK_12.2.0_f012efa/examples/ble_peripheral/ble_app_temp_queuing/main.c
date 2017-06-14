@@ -64,12 +64,12 @@
 #define PERIPHERAL_LINK_COUNT           1                                 /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
 #define TSTAMP_INTERVAL_IN_MS						1000
-#define ADV_INTERVAL_IN_MS							2000
+#define ADV_INTERVAL_IN_MS							4000
 #define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                 /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		5
+#define LOGINTERVAL_ADVINTERVAL_RATIO		2
 
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
@@ -95,11 +95,12 @@
 #define APP_TIMER_OP_QUEUE_SIZE         4		                                 /**< Size of timer operation queues. */
 #define TSTAMP_PRESCALER             		4095                                 /**< Value of the RTC1 PRESCALER register. */
 
+#define ADV_BUTTON											0
 
 static ble_nus_t                        m_nus;                                      /**< Structure to identify the Nordic UART Service. */
+static ble_tbs_t												m_tbs;																			/**< Structure to identify the TagBox Service. */
 static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
 static nrf_drv_twi_t 										twi = NRF_DRV_TWI_INSTANCE(0);
-
 
 
 // Global variables
@@ -109,6 +110,8 @@ time_t tstamp_sec;
 volatile bool initFlag = false;
 volatile bool gcDone = false;
 volatile bool writeFlag = false;
+volatile bool isAdvertising = false;
+
 
 static ble_gap_adv_params_t m_adv_params;                                 /**< Parameters to be passed to the stack when starting advertising. */
 static uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH] =                    /**< Information advertised by the Beacon. */
@@ -121,7 +124,6 @@ static uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH] =                    /**< I
 APP_TIMER_DEF(m_advdata_update_timer);
 APP_TIMER_DEF(m_dataToDB_timer);
 APP_TIMER_DEF(m_tstamp_timer);
-
 
 
 /***@brief function for initializing nrf logging.
@@ -210,19 +212,20 @@ static void advdata_update(void)
 
 void indicate_advertising(void)
 {
-		// Turn on LED to indicate advertising
-		nrf_gpio_pin_write(19,1); // Minew S1 v1.0 green LED
-		//nrf_gpio_pin_write(17,1); 	// Minew S1 v0.9 blue LED		
-		//SEGGER_RTT_printf(0,"LED ON");
+		if (isAdvertising)
+		{
+			// Turn on LED to indicate advertising
+			nrf_gpio_pin_write(19,1); // Minew S1 v1.0 green LED
+			//nrf_gpio_pin_write(17,1); 	// Minew S1 v0.9 blue LED		
+			//SEGGER_RTT_printf(0,"LED ON");
 	
-		nrf_delay_ms(5);
-		// Turn off LED 
-		nrf_gpio_pin_write(19,0); // Minew S1 v0.9 green LED
-		//nrf_gpio_pin_write(17,0);		// Minew S1 v0.9 blue LED
-		//SEGGER_RTT_printf(0,"LED OFF\r\n");
-	
+			nrf_delay_ms(5);
+			// Turn off LED 
+			nrf_gpio_pin_write(19,0); // Minew S1 v0.9 green LED
+			//nrf_gpio_pin_write(17,0);		// Minew S1 v0.9 blue LED
+			//SEGGER_RTT_printf(0,"LED OFF\r\n");
+		}
 }
-
 
 
 void advdata_update_timer_timeout_handler(void * p_context)
@@ -421,7 +424,7 @@ static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t lengt
 
 /**@brief Function for initializing services that will be used by the application.
  */
-static void services_init(void)
+static uint32_t services_init(void)
 {
     uint32_t       err_code;
     ble_nus_init_t nus_init;
@@ -429,9 +432,13 @@ static void services_init(void)
     memset(&nus_init, 0, sizeof(nus_init));
 
     nus_init.data_handler = nus_data_handler;
-
+		
     err_code = ble_nus_init(&m_nus, &nus_init);
-    APP_ERROR_CHECK(err_code);
+    if (err_code != NRF_SUCCESS) return err_code;
+		
+		err_code = ble_tbs_init(&m_tbs);
+		if (err_code != NRF_SUCCESS) return err_code;
+	
 }
 
 /**@brief Function for handling an event from the Connection Parameters Module.
@@ -562,8 +569,10 @@ static void advertising_init(void)
     // Initialize advertising parameters (used when starting advertising).
     memset(&m_adv_params, 0, sizeof(m_adv_params));
 
+//		uint8_t adv_mult 				 = ble_tbs_get_advinterval(&m_tbs);
+//		uint16_t adv_interval		 = MSEC_TO_UNITS(adv_mult*ADV_INTERVAL_UNIT_IN_MS, UNIT_0_625_MS);
+		
     m_adv_params.type        = BLE_GAP_ADV_TYPE_ADV_IND;
-//		m_adv_params.type				 = BLE_GAP_ADV_TYPE_ADV_NONCONN_IND;
 		m_adv_params.p_peer_addr = NULL;                             // Undirected advertisement.
     m_adv_params.fp          = BLE_GAP_ADV_FP_ANY;
     m_adv_params.interval    = ADV_INTERVAL;
@@ -575,15 +584,33 @@ static void advertising_init(void)
  */
 static uint32_t advertising_start(void)
 {
-    uint32_t err_code;
+    uint32_t err_code =  NRF_SUCCESS;
 
     err_code = sd_ble_gap_adv_start(&m_adv_params);
-//		SEGGER_RTT_printf(0,"Adv start err: %d \r\n", err_code);
-//		nrf_delay_ms(1000);
-		APP_ERROR_CHECK(err_code);
+		if (err_code == NRF_SUCCESS)
+		{
+			isAdvertising = true;
+			SEGGER_RTT_printf(0,"Advertising started");
+		}
+		return err_code;
+}
+
+/**@brief Function for stopping advertising.
+ */
+static uint32_t advertising_stop(void)
+{
+    uint32_t err_code;
+		if(isAdvertising)
+		{
+			err_code = sd_ble_gap_adv_stop();
+		}
+		else SEGGER_RTT_printf(0,"/r/n/nAdv stop called, but already not advertising/r/n/n");
 		
-//    err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
-//    APP_ERROR_CHECK(err_code);
+		if (err_code == NRF_SUCCESS) 
+		{
+			isAdvertising = false;
+			SEGGER_RTT_printf(0,"Advertising stopped");	
+		}
 		return err_code;
 }
 
@@ -599,16 +626,16 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
     switch (p_ble_evt->header.evt_id)
     {
         case BLE_GAP_EVT_CONNECTED:
+						isAdvertising = false;
             err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
             APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
-						nrf_gpio_pin_write(18,1);		// Minew S1 v1.0 Red LED
-            //nrf_gpio_pin_write(18,1);			// Minew S1 v0.9 Red LED
+						nrf_gpio_pin_write(18,1);				// Minew S1 v1.0 Red LED
+						//nrf_gpio_pin_write(18,1);			// Minew S1 v0.9 Red LED	
 						break; // BLE_GAP_EVT_CONNECTED
 
 				case BLE_EVT_TX_COMPLETE:
-            // Send next key event
-						
+            // Send next key event						
 						SEGGER_RTT_printf(0,"\r\nTX Complete\r\n");
             //nus_tx_flag_set();
 						nusRecKey++;
@@ -634,10 +661,10 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             nrf_gpio_pin_write(18,0);				// Minew S1 v1.0 Red LED
             //nrf_gpio_pin_write(18,0);			// Minew S1 v0.9 Red LED
 						err_code = advertising_start();
-						SEGGER_RTT_printf(0,"Adv restarted after disconnet errcode: %d\r\n\n",err_code);
-            APP_ERROR_CHECK(err_code);
-            m_conn_handle = BLE_CONN_HANDLE_INVALID;
-            break; // BLE_GAP_EVT_DISCONNECTED
+						if (err_code !=NRF_SUCCESS);
+						else SEGGER_RTT_printf(0,"Adv restarted after disconnet errcode: %d\r\n\n",err_code); 
+						m_conn_handle = BLE_CONN_HANDLE_INVALID;
+						break; // BLE_GAP_EVT_DISCONNECTED
 
         case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
             // Pairing not supported
@@ -699,6 +726,14 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             }
         } break; // BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST
 
+				case BLE_GATTS_EVT_WRITE:
+				{
+						uint8_t * pdata = p_ble_evt->evt.gatts_evt.params.write.data;
+						ble_uuid_t uuid = p_ble_evt->evt.gatts_evt.params.write.uuid;
+						SEGGER_RTT_printf(0, "\r\nChar value %d, uuid %04x\r\n", pdata[0], uuid.uuid);
+					//ble_tbs_get_advinterval(&m_tbs);
+				}
+						break;
         default:
             // No implementation needed.
             break;
@@ -714,6 +749,7 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 //   ble_db_discovery_on_ble_evt(&m_ble_db_discovery, p_ble_evt);
 	 ble_conn_params_on_ble_evt(p_ble_evt);
 	 ble_nus_on_ble_evt(&m_nus, p_ble_evt);
+	 ble_tbs_on_ble_evt(&m_tbs, p_ble_evt);
 //   ble_ias_on_ble_evt(&m_ias, p_ble_evt);
 //   ble_lls_on_ble_evt(&m_lls, p_ble_evt);
 //   ble_bas_on_ble_evt(&m_bas, p_ble_evt);
@@ -745,41 +781,33 @@ static void sys_evt_dispatch(uint32_t sys_evt)
 static void ble_stack_init(void)
 {
     uint32_t err_code;
-//		SEGGER_RTT_printf(0,"Inside ble stack init \r\n");
     nrf_clock_lf_cfg_t clock_lf_cfg = NRF_CLOCK_LFCLKSRC;
 	
     // Initialize the SoftDevice handler module.
     SOFTDEVICE_HANDLER_INIT(&clock_lf_cfg, NULL);
 
     ble_enable_params_t ble_enable_params;
+	
     err_code = softdevice_enable_get_default_config(CENTRAL_LINK_COUNT,
                                                     PERIPHERAL_LINK_COUNT,
                                                     &ble_enable_params);
-//		SEGGER_RTT_printf(0,"sd default config err: %d \r\n",err_code);
-//		nrf_delay_ms(1000);
 		APP_ERROR_CHECK(err_code);
-//		SEGGER_RTT_printf(0,"softdevice enable default config err_code: %d\r\n",err_code);
-
+    ble_enable_params.common_enable_params.vs_uuid_count = 2;
 		
     //Check the ram settings against the used number of links
     CHECK_RAM_START_ADDR(CENTRAL_LINK_COUNT,PERIPHERAL_LINK_COUNT);
 
     // Enable BLE stack.
     err_code = softdevice_enable(&ble_enable_params);
-//		SEGGER_RTT_printf(0,"sd enable err: %d \r\n",err_code);
-//		nrf_delay_ms(1000);
 		APP_ERROR_CHECK(err_code);
 
-//		SEGGER_RTT_printf(0,"softdevice enable err_code: %d\r\n",err_code);
 
     // Register with the SoftDevice handler module for BLE events.
     err_code = softdevice_ble_evt_handler_set(ble_evt_dispatch);
 		APP_ERROR_CHECK(err_code);
-//		SEGGER_RTT_printf(0,"softdevice ble evt handler err_code: %d\r\n",err_code);
 
     // Register with the SoftDevice handler module for BLE events.
     err_code = softdevice_sys_evt_handler_set(sys_evt_dispatch);
-//		SEGGER_RTT_printf(0,"sys evt err_code: %d\r\n",err_code);
 		APP_ERROR_CHECK(err_code);	
 	
 }
@@ -797,7 +825,9 @@ void bsp_event_handler(bsp_event_t event)
             sleep_mode_enter();
             break;
 				case BSP_EVENT_ADVERTISING_START:
-						advertising_start();
+						if (!isAdvertising) advertising_start();
+						else advertising_stop();
+						break;
         case BSP_EVENT_DISCONNECT:
             err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             if (err_code != NRF_ERROR_INVALID_STATE)
@@ -805,7 +835,6 @@ void bsp_event_handler(bsp_event_t event)
                 APP_ERROR_CHECK(err_code);
             }
             break;
-
         case BSP_EVENT_WHITELIST_OFF:
             if (m_conn_handle == BLE_CONN_HANDLE_INVALID)
             {
@@ -816,7 +845,6 @@ void bsp_event_handler(bsp_event_t event)
                 }
             }
             break;
-
         default:
             break;
     }
@@ -826,19 +854,21 @@ void bsp_event_handler(bsp_event_t event)
  *
  * @param[out] p_erase_bonds  Will be true if the clear bonding button was pressed to wake the application up.
  */
-static void buttons_leds_init(bool * p_erase_bonds)
+static uint32_t buttons_leds_init(bool * p_erase_bonds)
 {
     bsp_event_t startup_event;
 
     uint32_t err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
                                  APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
                                  bsp_event_handler);
-    APP_ERROR_CHECK(err_code);
+		if(err_code != NRF_SUCCESS) return err_code;
 
-    err_code = bsp_btn_ble_init(NULL, &startup_event);
-    APP_ERROR_CHECK(err_code);
 
-    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
+		err_code = bsp_event_to_button_action_assign(ADV_BUTTON, BSP_BUTTON_ACTION_LONG_PUSH, BSP_EVENT_ADVERTISING_START);
+		if(err_code != NRF_SUCCESS) return err_code;
+	
+
+    //*p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
 }
 
 
@@ -856,10 +886,11 @@ static void power_manage(void)
  */
 int main(void)
 {
-		uint32_t err_code;
+		uint32_t err_code = NRF_SUCCESS;
 		bsp_board_leds_init();
+		
 		nrf_delay_ms(1000); // To allow for bounce during battery insertion 
-	
+		
 		// Initialize.
 		log_init();
 		SEGGER_RTT_printf(0,"\r\n\n\n\nInitializing ...\n");
@@ -872,6 +903,11 @@ int main(void)
 		timers_init();
 		SEGGER_RTT_printf(0,"Timers Initialized \n");
 
+		err_code = buttons_leds_init(false);
+		if (err_code != NRF_SUCCESS) SEGGER_RTT_printf(0,"BSP init error %d\r\n", err_code); 
+		else SEGGER_RTT_printf(0,"BSP Initialized \n");
+	
+	
 		ble_stack_init();	
 		gap_params_init();
 		SEGGER_RTT_printf(0,"ble stack Initialized \n");		
@@ -880,8 +916,10 @@ int main(void)
 		advertising_init();
 		SEGGER_RTT_printf(0,"Adv Initialized \n");
 		
-		services_init();
-		SEGGER_RTT_printf(0,"services Initialized \n");
+		err_code = services_init();
+		if (err_code != NRF_SUCCESS) SEGGER_RTT_printf(0,"Services init error %d\r\n", err_code); 
+		else SEGGER_RTT_printf(0,"Services Initialized \n");
+		
 
 		conn_params_init();
 		SEGGER_RTT_printf(0,"Conn Params Initialized \n");

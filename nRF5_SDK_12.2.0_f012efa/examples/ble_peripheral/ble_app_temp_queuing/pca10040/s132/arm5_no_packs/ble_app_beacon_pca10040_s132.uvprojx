@@ -297,8 +297,8 @@
               </OCR_RVCT8>
               <OCR_RVCT9>
                 <Type>0</Type>
-                <StartAddress>0x20002128</StartAddress>
-                <Size>0xded8</Size>
+                <StartAddress>0x20002138</StartAddress>
+                <Size>0xdec8</Size>
               </OCR_RVCT9>
               <OCR_RVCT10>
                 <Type>0</Type>
@@ -403,6 +403,11 @@
               <FileName>battery_level.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\battery_level.c</FilePath>
+            </File>
+            <File>
+              <FileName>ble_tbs.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\ble_tbs.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -2140,6 +2145,11 @@
               <FileName>battery_level.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\battery_level.c</FilePath>
+            </File>
+            <File>
+              <FileName>ble_tbs.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\ble_tbs.c</FilePath>
             </File>
           </Files>
         </Group>

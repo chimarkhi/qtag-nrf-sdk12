@@ -3562,7 +3562,7 @@
 // <e> NRF_LOG_USES_COLORS - If enabled then ANSI escape code for colors is prefixed to every string
 //==========================================================
 #ifndef NRF_LOG_USES_COLORS
-#define NRF_LOG_USES_COLORS 0
+#define NRF_LOG_USES_COLORS 1
 #endif
 #if  NRF_LOG_USES_COLORS
 // <o> NRF_LOG_COLOR_DEFAULT  - ANSI escape code prefix.
@@ -3625,7 +3625,7 @@
 // <4=> Debug 
 
 #ifndef NRF_LOG_DEFAULT_LEVEL
-#define NRF_LOG_DEFAULT_LEVEL 0
+#define NRF_LOG_DEFAULT_LEVEL 4
 #endif
 
 // <e> NRF_LOG_DEFERRED - Enable deffered logger.
