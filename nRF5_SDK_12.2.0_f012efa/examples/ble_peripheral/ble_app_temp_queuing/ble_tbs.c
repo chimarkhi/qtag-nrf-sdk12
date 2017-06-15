@@ -5,6 +5,9 @@
 #include "ble_srv_common.h"
 #include "app_error.h"
 
+#define  NRF_LOG_MODULE_NAME 						"BLE_TBS"
+#include "nrf_log.h"
+
 // Declaration of a function for housekeeping of ble connections related to tbs service and characteristic
 void ble_tbs_on_ble_evt(ble_tbs_t * p_tbs, ble_evt_t * p_ble_evt)
 {
@@ -139,5 +142,7 @@ uint8_t ble_tbs_get_advinterval(ble_tbs_t * p_tbs)
 	gatts_buf.p_value = &data_buf;
 	
 	err_code = sd_ble_gatts_value_get(BLE_CONN_HANDLE_INVALID, p_tbs->char_handles.value_handle, &gatts_buf );
-	//SEGGER_RTT_printf(0,"char read err %d, value %d",err_code, &gatts_buf.p_value[0]);
+	//NRF_LOG_DEBUG("char read err %d, value %d",err_code, &gatts_buf.p_value[0]);
+	
+	return data_buf;
 }

@@ -6,7 +6,8 @@
 #include "nrf_drv_saadc.h"
 #endif //ADC_PRESENT
 
-
+#define  NRF_LOG_MODULE_NAME 						"BATTERY_LEVEL"
+#include "nrf_log.h"
 
 #ifdef ADC_PRESENT
 static nrf_adc_value_t adc_buf[1];
@@ -133,11 +134,11 @@ void saadc_event_handler(nrf_drv_saadc_evt_t const * p_event)
         
 				if (err_code != NRF_SUCCESS)
 				{
-					SEGGER_RTT_printf(0,"Battery level conversion failed\r\n");
+					NRF_LOG_ERROR("Battery level conversion failed\r\n");
 				}
 				else
 				{
-					SEGGER_RTT_printf(0,"Battery level (from callback): %d\r\n",percentage_batt_lvl);
+					NRF_LOG_DEBUG("Battery level (from callback): %d\r\n",percentage_batt_lvl);
 				}
 			
     }
@@ -191,7 +192,7 @@ uint8_t get_battery_level(void)
 		if (err_code != NRF_SUCCESS)
 		{
 			percentage_batt_lvl = ADC_CONVERT_ERROR;
-			SEGGER_RTT_printf(0,"ADC single conv error : %d", err_code);
+			NRF_LOG_ERROR("ADC single conv error : %d", err_code);
 		}
 		else
 		{

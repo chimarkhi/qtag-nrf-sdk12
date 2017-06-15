@@ -10,6 +10,9 @@
 #include "nrf_delay.h"
 #include "ble_nus.h"
 
+#define  NRF_LOG_MODULE_NAME 						"BLEDB"
+#include "nrf_log.h"
+
 volatile uint8_t nus_tx_complete = 0;
 
 uint32_t recCounter;
@@ -38,14 +41,14 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
 		uint16_t recKey = p_fds_evt->write.record_key;
 		uint16_t recID = p_fds_evt->write.record_id;
 
-		//SEGGER_RTT_printf(0,"FDS Evt %d, result %d\r\n",p_fds_evt->id ,p_fds_evt->result );
+		//NRF_LOG_DEBUG("FDS Evt %d, result %d\r\n",p_fds_evt->id ,p_fds_evt->result );
 		
     switch (p_fds_evt->id)
     {
         case FDS_EVT_INIT:
             if (p_fds_evt->result != FDS_SUCCESS)
             {
-              SEGGER_RTT_printf(0,"FDS Initialization Failed \n");  // Initialization failed.
+              NRF_LOG_ERROR("FDS Initialization Failed \n");  // Initialization failed.
             } 
 						else initFlag = true;
             break;
@@ -53,7 +56,7 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
 						if (p_fds_evt->result == FDS_SUCCESS)
 						{
 							writeFlag = true;
-							SEGGER_RTT_printf(0,"Wrote file,rec,recID :%04x,%04x,%d  recCounter: %d \r\n", 
+							NRF_LOG_INFO("Wrote file,rec,recID :%04x,%04x,%d  recCounter: %d \r\n", 
 																fileID, recKey, recID, recCounter);
 							
 							// if data saved successfully, update the last seen reckey and tstamp in flash
@@ -66,13 +69,13 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
 						}
 						else
 						{
-							SEGGER_RTT_printf(0,"FDS write failed for file,record: %04x,%04x result:%d\r\n", fileID, recKey,p_fds_evt->result);
+							NRF_LOG_ERROR("FDS write failed for file,record: %04x,%04x result:%d\r\n", fileID, recKey,p_fds_evt->result);
 						}
 						break;
 				case FDS_EVT_UPDATE:
 						if (p_fds_evt->result == FDS_SUCCESS)
 						{
-							SEGGER_RTT_printf(0,"Updated file,record,recID: %04x,%04x,%d \r\n", fileID, recKey, recID);
+							NRF_LOG_INFO("Updated file,record,recID: %04x,%04x,%d \r\n", fileID, recKey, recID);
 							fds_read(fileID, recKey, data, dataLen);
 						}
 						break;						
@@ -83,13 +86,13 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
 						}
 						break;		
 				case FDS_EVT_DEL_RECORD:
-						SEGGER_RTT_printf(0,"Deleted record ID: %d, result: %d \r\n",p_fds_evt->del.record_id, p_fds_evt->result);
+						NRF_LOG_INFO("Deleted record ID: %d, result: %d \r\n",p_fds_evt->del.record_id, p_fds_evt->result);
 						if (p_fds_evt->result == FDS_SUCCESS)
 						{
 							if ((p_fds_evt->del.record_id % FREQ_OF_RUN_GC < 2) & 
 									(p_fds_evt->del.record_id != REC_KEY_LASTSEEN ))
 							{
-								SEGGER_RTT_printf(0,"Scheduled GC being run\r\n");
+								NRF_LOG_INFO("Scheduled GC being run\r\n");
 								fds_gc();
 								//wait_for_fds_evt(FDS_EVT_GC);
 							}
@@ -97,7 +100,7 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
 				case FDS_EVT_GC:
 						if (p_fds_evt->result == FDS_SUCCESS)
 						{
-							SEGGER_RTT_printf(0,"GC Done, space reclaimed %d\n", p_fds_evt->gc.space_reclaimed);
+							NRF_LOG_DEBUG("GC Done, space reclaimed %d\n", p_fds_evt->gc.space_reclaimed);
 							gcDone = true;
 						}
 						break;		
@@ -122,7 +125,7 @@ ret_code_t fds_write(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t
 		
 		record_chunk.p_data         = &dataPacket_test[0];
 		record_chunk.length_words   = dataLen;
-		// SEGGER_RTT_printf(0,"Write dataIn: %08x, %08x, %08x, Size:%d\r\n", data[0],data[1],data[2],record_chunk.length_words);
+		// NRF_LOG_DEBUG("Write dataIn: %08x, %08x, %08x, Size:%d\r\n", data[0],data[1],data[2],record_chunk.length_words);
 		// Set up record.
 		record.file_id              = fileID;
 		record.key              	  = recKey;
@@ -135,7 +138,7 @@ ret_code_t fds_write(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t
 		{
 				return ret;
 		}		
-//		SEGGER_RTT_printf(0,"Wrote recordID:%d \r\n",record_desc.record_id);
+//		NRF_LOG_DEBUG("Wrote recordID:%d \r\n",record_desc.record_id);
 		return NRF_SUCCESS;
 }
 
@@ -159,25 +162,25 @@ ret_code_t save_lastseen(uint16_t fileID, uint16_t recKey)
 				err_code = fds_record_open(&record_desc, &flash_record);
 				if ( err_code != FDS_SUCCESS)
 				{
-					SEGGER_RTT_printf(0,"error opening record: %u\n", err_code);
+					NRF_LOG_ERROR("error opening record: %u\n", err_code);
 					return err_code;		
 				}
 
-				SEGGER_RTT_printf(0,"Data read back from file,rec,recID [%04x,%04x,%d] = ",
+				NRF_LOG_INFO("Data read back from file,rec,recID [%04x,%04x,%d] = ",
 														fileID, recKey, record_desc.record_id);
 				dataTemp = (uint32_t *) flash_record.p_data;
 			
 				for (uint8_t i=0;i<flash_record.p_header->tl.length_words;i++)
 				{
-					SEGGER_RTT_printf(0,"%08x ",dataTemp[i]);
+					NRF_LOG_RAW_INFO("%08x ",dataTemp[i]);
 					data[i] = dataTemp[i];
 				}
-				SEGGER_RTT_printf(0,"\r\n");
+				NRF_LOG_RAW_INFO("\r\n");
 				
 				err_code = fds_write(FILE_ID, REC_KEY_LASTSEEN, dataTemp, flash_record.p_header->tl.length_words);
 				if (err_code != FDS_SUCCESS)
 				{
-					SEGGER_RTT_printf(0,"Update error : %d",err_code);
+					NRF_LOG_ERROR("Update error : %d",err_code);
 					return err_code;	
 				}
 		}				
@@ -199,20 +202,20 @@ ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t d
 				err_code = fds_record_open(&record_desc, &flash_record);
 				if ( err_code != FDS_SUCCESS)
 				{
-					SEGGER_RTT_printf(0,"error opening record: %u\n", err_code);
+					NRF_LOG_ERROR("error opening record: %u\n", err_code);
 					return err_code;		
 				}
 				
-				SEGGER_RTT_printf(0,"Data read back from file,rec,recID [%04x,%04x,%d] = ",
+				NRF_LOG_INFO("Data read back from file,rec,recID [%04x,%04x,%d] = ",
 														fileID, recKey, record_desc.record_id);
 				dataTemp = (uint32_t *) flash_record.p_data;
 				for (uint8_t i=0;i<flash_record.p_header->tl.length_words;i++)
 				{
-					SEGGER_RTT_printf(0,"%08x ",dataTemp[i]);
+					NRF_LOG_RAW_INFO("%08x ",dataTemp[i]);
 					data[i] = dataTemp[i];
 				}
 				dataLen = flash_record.p_header->tl.length_words;
-				SEGGER_RTT_printf(0,"\r\n");
+				NRF_LOG_RAW_INFO("\r\n");
 				// Access the record through the flash_record structure.
 				// Close the record when done.
 				err_code = fds_record_close(&record_desc);
@@ -233,13 +236,12 @@ ret_code_t fds_find_and_delete (uint16_t fileID, uint16_t recKey)
 		ftok.page=0;
 		ftok.p_addr=NULL;
 		
-		uint32_t err_code;
 	
 		// Loop and find records with same ID and rec key and mark them as deleted. 
 		while (fds_record_find(fileID, recKey, &record_desc, &ftok) == FDS_SUCCESS)
 		{
-			err_code = fds_record_delete(&record_desc);
-			//SEGGER_RTT_printf(0,"Deleted record ID: %d, err: %d \r\n",record_desc.record_id, err_code);
+			uint32_t err_code = fds_record_delete(&record_desc);
+			//NRF_LOG_DEBUG("Deleted record ID: %d, err: %d \r\n",record_desc.record_id, err_code);
 			count++;
 		}
 		if (count>0)	return NRF_SUCCESS;
@@ -275,7 +277,7 @@ ret_code_t fds_cleanup(uint32_t fileID)
 		}
 		else
 		{
-			SEGGER_RTT_printf(0,"Flash cleanup error:%d",ret);
+			NRF_LOG_ERROR("Flash cleanup error:%d",ret);
 		}
 	return ret;
 }
@@ -285,15 +287,15 @@ ret_code_t dataToDB (uint16_t fileID, uint16_t recKey, uint32_t * data, uint16_t
 {
 		recKey = (recCounter % DATA_POINTS) + REC_KEY_START;
 		
-		//SEGGER_RTT_printf(0,"dataToDB dataArray : %08x %08x %08x\r\n", data[0], data[1], data[2]);
+		//NRF_LOG_DEBUG("dataToDB dataArray : %08x %08x %08x\r\n", data[0], data[1], data[2]);
 		ret_code_t ret = fds_find_and_delete(fileID, recKey);
 		if (ret == FDS_SUCCESS)
 		{
-			SEGGER_RTT_printf(0,"Old record will be upated  \r\n");
+			NRF_LOG_INFO("Old record will be upated  \r\n");
 		}
 		else if (ret == FDS_ERR_OPERATION_TIMEOUT)
 		{
-			SEGGER_RTT_printf(0,"New record will be written \r\n");
+			NRF_LOG_INFO("New record will be written \r\n");
 		}
 		else return ret;
 			
@@ -305,32 +307,19 @@ ret_code_t dataToDB (uint16_t fileID, uint16_t recKey, uint32_t * data, uint16_t
 			switch (ret)
 			{
 				case FDS_ERR_NO_SPACE_IN_FLASH:
-					SEGGER_RTT_printf(0,"No space in flash, running GC\r\n");
+					NRF_LOG_WARNING("No space in flash, running GC\r\n");
 					//ret = fds_cleanup(fileID);
 					fds_gc();
 					wait_for_fds_evt(FDS_EVT_GC);
 					ret = fds_write(fileID, recKey, data, dataLen);
 					wait_for_fds_evt(FDS_EVT_WRITE);
 					return ret;
-					break;
 				default:
 					return ret;
-          break;
 			}
 		}
 		
 		return NRF_SUCCESS;		
-}
-
-static void create_nus_payload(uint32_t data, uint8_t dataByteArray, uint16_t dataLengthInBytes)
-{
-			dataLengthInBytes = sizeof(data)<<2;
-			uint8_t *p_dataPacket = (uint8_t *)&data;
-			
-			uint8_t temp[dataLengthInBytes];
-			for (uint8_t i=0;i<sizeof(p_dataPacket);i++){	
-				temp[i] = p_dataPacket[i];
-			}
 }
 
 
@@ -359,11 +348,11 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 			//	Handle exceptions like flash full etc : FDS_ERR_*	
 			if (ret != FDS_SUCCESS)
 			{
-				SEGGER_RTT_printf(0,"Record read error: %d", ret);
+				NRF_LOG_ERROR("Record read error: %d", ret);
 				switch (ret)
 				{
 					case FDS_ERR_OPERATION_TIMEOUT:
-						SEGGER_RTT_printf(0,"RECKEY recKey not found in DB\r\n", ret);
+						NRF_LOG_WARNING("RECKEY recKey not found in DB\r\n", ret);
 						return ret;
 					default:
 						ret = FDS_ERR_INTERNAL;
@@ -379,20 +368,20 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 				for (uint8_t i=0;i<dataLengthInBytes;i++)
 				{
 					dataByteArray[i] = p_dataPacket[i];
-					//SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
+					//NRF_LOG_RAW_INFO("%02x",dataByteArray[i]);
 				}
 
 				ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
 				if (ret != FDS_SUCCESS)
 				{
-					SEGGER_RTT_printf(0,"NUS string send error: %d",ret);
+					NRF_LOG_ERROR("NUS string send error: %d",ret);
 					return ret;
 				}
 					
-				SEGGER_RTT_printf(0,"Data sent over NUS:");
+				NRF_LOG_INFO("Data sent over NUS:");
 				for (uint8_t i=0;i<dataLengthInBytes;i++)
 				{
-					SEGGER_RTT_printf(0,"%02x",dataByteArray[i]);
+					NRF_LOG_RAW_INFO("%02x",dataByteArray[i]);
 				}
 			}
 		}

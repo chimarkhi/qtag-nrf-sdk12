@@ -51,7 +51,6 @@
 #include "app_util_platform.h"
 #include "ble_conn_params.h"
 #include "ble_hci.h"
-#include "main.h"
 #include "nrf_drv_twi.h"
 #include "sht31.h"
 #include "battery_level.h"
@@ -69,14 +68,14 @@
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		2
+#define LOGINTERVAL_ADVINTERVAL_RATIO		225
 
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
 #define APP_COMPANY_IDENTIFIER          0x128B                            /**< Company identifier for TagBox */
 #define APP_BEACON_UUID                 0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-#define DEVICE_NAME											"XT86A6"
+#define DEVICE_NAME											"XT5AFD"
 #define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN        /**< UUID type for the Nordic UART Service (vendor specific). */
 #define DATAPACKET_UUID									0xAB04
 
@@ -204,7 +203,7 @@ static void advdata_update(void)
     advdata.p_service_data_array 		= service_data;
 
     err_code = ble_advdata_set(&advdata, NULL);
-    //SEGGER_RTT_printf(0,"adv set err: %d\r\n",err_code);
+    //NRF_LOG_DEBUG("adv set err: %d\r\n",err_code);
     APP_ERROR_CHECK(err_code);
 		
 }
@@ -217,13 +216,13 @@ void indicate_advertising(void)
 			// Turn on LED to indicate advertising
 			nrf_gpio_pin_write(19,1); // Minew S1 v1.0 green LED
 			//nrf_gpio_pin_write(17,1); 	// Minew S1 v0.9 blue LED		
-			//SEGGER_RTT_printf(0,"LED ON");
+			//NRF_LOG_DEBUG("LED ON");
 	
 			nrf_delay_ms(5);
 			// Turn off LED 
 			nrf_gpio_pin_write(19,0); // Minew S1 v0.9 green LED
 			//nrf_gpio_pin_write(17,0);		// Minew S1 v0.9 blue LED
-			//SEGGER_RTT_printf(0,"LED OFF\r\n");
+			//NRF_LOG_DEBUG("LED OFF\r\n");
 		}
 }
 
@@ -237,7 +236,7 @@ void advdata_update_timer_timeout_handler(void * p_context)
 void tstamp_timer_timeout_handler(void * p_context)
 {
 	 ++tstamp_sec;
-//	SEGGER_RTT_printf(0,"Timestamp %d\r\n",tstamp_sec);
+//	NRF_LOG_DEBUG("Timestamp %d\r\n",tstamp_sec);
 }
 
 /**@brief Function for the tstamp and record key
@@ -267,7 +266,7 @@ void tstamp_reckey_init()
 			recCounter_init(REC_KEY_START);
 		}
 		
-		SEGGER_RTT_printf(0,"Starting from RECKEY,tstamp: [%04x,%08x]\r\n",(uint16_t)data[0],tstamp_sec);
+		NRF_LOG_INFO("Starting from RECKEY,tstamp: [%04x,%08x]\r\n",(uint16_t)data[0],tstamp_sec);
 }
 
 
@@ -296,8 +295,8 @@ void dataToDB_timer_timeout_handler(void * p_context)
 		uint32_t dataPacket[WORDLEN_DATAPACKET] = {recKey,
 														 timeStamp,
 														 (temp << 16) | humid_batt};	
-															 
-		SEGGER_RTT_printf(0,"\r\n\n\nData to DB: RecKey %08x, time %08x, data %08x\r\n", dataPacket[0], dataPacket[1], dataPacket[2]);
+		NRF_LOG_RAW_INFO("\r\n\n\n");
+		NRF_LOG_INFO("Data to DB: RecKey %08x, time %08x, data %08x\r\n", dataPacket[0], dataPacket[1], dataPacket[2]);
 		uint32_t err_code = dataToDB(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
 		// if data saved successfully, update the last seen reckey and tstamp in flash												 
 
@@ -307,7 +306,7 @@ void dataToDB_timer_timeout_handler(void * p_context)
 			err_code = fds_find_and_delete(FILE_ID, REC_KEY_LASTSEEN);
 			err_code = fds_write(FILE_ID, REC_KEY_LASTSEEN, dataPacket, WORDLEN_DATAPACKET);
 		}
-		else	SEGGER_RTT_printf(0,"DataToDB error : %d", err_code); 
+		else	NRF_LOG_ERROR("DataToDB error : %d", err_code); 
 }
 
 /**@brief Function for the Timer initialization.
@@ -387,15 +386,16 @@ static void gap_params_init(void)
 /**@snippet [Handling the data received over BLE] */
 static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t length)
 {
-			SEGGER_RTT_printf(0,"Inside nus data handler\r\n");
+			NRF_LOG_INFO("Inside nus data handler\r\n");
 
-			SEGGER_RTT_printf(0,"data from central (Only 2 bytes used by code):");	
+			NRF_LOG_INFO("data from central (Only 2 bytes used by code):");	
 			for (uint32_t i = 0; i < 2; i++)
 			{
-					SEGGER_RTT_printf(0,"%02x",p_data[1-i]);
+					NRF_LOG_RAW_INFO("%02x",p_data[1-i]);
 			}
+			NRF_LOG_RAW_INFO("\r\n");
 			uint16_t startRecKey = p_data[1]<<8|p_data[0];
-			SEGGER_RTT_printf(0,"  Start record : 0x%04x\r\n", startRecKey);
+			NRF_LOG_INFO("Start record : 0x%04x\r\n", startRecKey);
 			nusCurrentKey = get_recKey();
 			
 			if (startRecKey < nusCurrentKey)
@@ -403,7 +403,7 @@ static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t lengt
 				if (startRecKey > nusCurrentKey - DATA_POINTS) nusRecKey = startRecKey;
 				else nusRecKey = nusCurrentKey - DATA_POINTS;
 
-				SEGGER_RTT_printf(0,"Stating data transfer from %04x\r\n", nusRecKey);
+				NRF_LOG_INFO("Stating data transfer from %04x\r\n", nusRecKey);
 
 				uint32_t err_code = payload_to_central_async(&m_nus, nusRecKey);
 				if (err_code != FDS_SUCCESS)
@@ -413,12 +413,12 @@ static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t lengt
 						case FDS_ERR_OPERATION_TIMEOUT:
 							payload_to_central_async(&m_nus, ++nusRecKey);	
 						default:
-							SEGGER_RTT_printf(0,"NUS TX error %d\r\n\n", err_code);
+							NRF_LOG_ERROR("NUS TX error %d\r\n\n", err_code);
 							break;
 					}
 				}
 			}
-			else	SEGGER_RTT_printf(0,"Input recKey is higher than latest recKey\r\n\n");
+			else	NRF_LOG_WARNING("Input recKey is higher than latest recKey\r\n\n");
 }
 /**@snippet [Handling the data received over BLE] */
 
@@ -438,7 +438,8 @@ static uint32_t services_init(void)
 		
 		err_code = ble_tbs_init(&m_tbs);
 		if (err_code != NRF_SUCCESS) return err_code;
-	
+		
+		return err_code;
 }
 
 /**@brief Function for handling an event from the Connection Parameters Module.
@@ -512,30 +513,6 @@ static void sleep_mode_enter(void)
     APP_ERROR_CHECK(err_code);
 }
 
-/**@brief Function for handling advertising events.
- *
- * @details This function will be called for advertising events which are passed to the application.
- *
- * @param[in] ble_adv_evt  Advertising event.
- */
-static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
-{
-    uint32_t err_code;
-
-    switch (ble_adv_evt)
-    {
-        case BLE_ADV_EVT_FAST:
-            err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
-            APP_ERROR_CHECK(err_code);
-            break;
-        case BLE_ADV_EVT_IDLE:
-            sleep_mode_enter();
-            break;
-        default:
-            break;
-    }
-}
-
 
 
 /**@brief Function for initializing the Advertising functionality.
@@ -590,7 +567,7 @@ static uint32_t advertising_start(void)
 		if (err_code == NRF_SUCCESS)
 		{
 			isAdvertising = true;
-			SEGGER_RTT_printf(0,"Advertising started");
+			NRF_LOG_INFO("Advertising started");
 		}
 		return err_code;
 }
@@ -604,12 +581,12 @@ static uint32_t advertising_stop(void)
 		{
 			err_code = sd_ble_gap_adv_stop();
 		}
-		else SEGGER_RTT_printf(0,"/r/n/nAdv stop called, but already not advertising/r/n/n");
+		else NRF_LOG_WARNING("/r/n/nAdv stop called, but already not advertising/r/n/n");
 		
 		if (err_code == NRF_SUCCESS) 
 		{
 			isAdvertising = false;
-			SEGGER_RTT_printf(0,"Advertising stopped");	
+			NRF_LOG_INFO("Advertising stopped");	
 		}
 		return err_code;
 }
@@ -636,7 +613,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 
 				case BLE_EVT_TX_COMPLETE:
             // Send next key event						
-						SEGGER_RTT_printf(0,"\r\nTX Complete\r\n");
+						NRF_LOG_INFO("\r\nTX Complete\r\n");
             //nus_tx_flag_set();
 						nusRecKey++;
 						if (nusRecKey < nusCurrentKey){
@@ -647,11 +624,11 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 							err_code = payload_to_central_async(&m_nus, REC_KEY_EOM);
 							if (err_code != NRF_SUCCESS)
 							{	
-								SEGGER_RTT_printf(0,"Err sending eom package: %d\r\n", err_code);
+								NRF_LOG_ERROR("Err sending eom package: %d\r\n", err_code);
 							}
 							else 
 							{
-								SEGGER_RTT_printf(0,"eom sent\r\n");
+								NRF_LOG_INFO("eom sent\r\n");
 								nusRecKey++;
 							}
 						}
@@ -661,8 +638,11 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             nrf_gpio_pin_write(18,0);				// Minew S1 v1.0 Red LED
             //nrf_gpio_pin_write(18,0);			// Minew S1 v0.9 Red LED
 						err_code = advertising_start();
-						if (err_code !=NRF_SUCCESS);
-						else SEGGER_RTT_printf(0,"Adv restarted after disconnet errcode: %d\r\n\n",err_code); 
+						if (err_code !=NRF_SUCCESS) 
+						{
+							NRF_LOG_ERROR("Adv restart failed after disconnet errcode: %d\r\n",err_code);						
+						}
+						else  NRF_LOG_INFO("Adv restarted after disconnect\r\n\n"); 
 						m_conn_handle = BLE_CONN_HANDLE_INVALID;
 						break; // BLE_GAP_EVT_DISCONNECTED
 
@@ -856,8 +836,6 @@ void bsp_event_handler(bsp_event_t event)
  */
 static uint32_t buttons_leds_init(bool * p_erase_bonds)
 {
-    bsp_event_t startup_event;
-
     uint32_t err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
                                  APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
                                  bsp_event_handler);
@@ -867,8 +845,7 @@ static uint32_t buttons_leds_init(bool * p_erase_bonds)
 		err_code = bsp_event_to_button_action_assign(ADV_BUTTON, BSP_BUTTON_ACTION_LONG_PUSH, BSP_EVENT_ADVERTISING_START);
 		if(err_code != NRF_SUCCESS) return err_code;
 	
-
-    //*p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
+		return err_code;
 }
 
 
@@ -892,44 +869,51 @@ int main(void)
 		
 		// Initialize.
 		log_init();
-		NRF_LOG_DEBUG("Starting Logging\n");
-		SEGGER_RTT_printf(0,"\r\n\n\n\nInitializing ...\n");
+		NRF_LOG_INFO("Starting Logging\n");
+		NRF_LOG_INFO("\r\n\n\n\nInitializing ...\n");
 
 		APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, false);
 		err_code = bsp_init(BSP_INIT_LED, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER), NULL);
 		APP_ERROR_CHECK(err_code);
 
-		SEGGER_RTT_printf(0,"Initializing Timers \n");
+		NRF_LOG_INFO("Initializing Timers \n");
 		timers_init();
-		SEGGER_RTT_printf(0,"Timers Initialized \n");
+		NRF_LOG_INFO("Timers Initialized \n");
 
 		err_code = buttons_leds_init(false);
-		if (err_code != NRF_SUCCESS) SEGGER_RTT_printf(0,"BSP init error %d\r\n", err_code); 
-		else SEGGER_RTT_printf(0,"BSP Initialized \n");
+		if (err_code != NRF_SUCCESS) 
+		{
+			NRF_LOG_ERROR("BSP init error %d\r\n", err_code); 
+		}
+		else NRF_LOG_INFO("BSP Initialized \n");
 	
 	
 		ble_stack_init();	
 		gap_params_init();
-		SEGGER_RTT_printf(0,"ble stack Initialized \n");		
+		NRF_LOG_INFO("ble stack Initialized \n");		
 			
 		adc_configure();
 		advertising_init();
-		SEGGER_RTT_printf(0,"Adv Initialized \n");
+		NRF_LOG_INFO("Adv Initialized \n");
 		
 		err_code = services_init();
-		if (err_code != NRF_SUCCESS) SEGGER_RTT_printf(0,"Services init error %d\r\n", err_code); 
-		else SEGGER_RTT_printf(0,"Services Initialized \n");
+		if (err_code != NRF_SUCCESS) NRF_LOG_ERROR("Services init error %d\r\n", err_code); 
+		//else NRF_LOG_INFO("Services Initialized \n");
 		
 
 		conn_params_init();
-		SEGGER_RTT_printf(0,"Conn Params Initialized \n");
+		NRF_LOG_INFO("Conn Params Initialized \n");
 		
 		err_code = twi_init(&twi);
-		SEGGER_RTT_printf(0,"SHT31's I2C Initialized \n");
+		NRF_LOG_INFO("SHT31's I2C Initialized \n");
 
 		// Wait for fds to be initialized before any read/write
 		err_code =fds_bledb_init();
-		SEGGER_RTT_printf(0,"fds init err: %d \n",err_code);
+		if (err_code != NRF_SUCCESS) 
+		{
+			NRF_LOG_ERROR("fds init err: %d \n",err_code);
+		}
+		else NRF_LOG_INFO("fds initialized"); 
 		APP_ERROR_CHECK(err_code);
 		// POLL FOR INIT CALLBACK
 		wait_for_fds_evt(FDS_EVT_INIT);
@@ -937,16 +921,16 @@ int main(void)
 		
 		#ifdef INIT_DEVICE
 
-		SEGGER_RTT_printf(0,"\r\n\n----Device Flash Init Begin----\n");
+		NRF_LOG_INFO("\r\n\n----Device Flash Init Begin----\n");
 		
 		err_code = fds_file_delete(FILE_ID);
-		SEGGER_RTT_printf(0,"file del err: %d \n",err_code);
+		NRF_LOG_ERROR("file del err: %d \n",err_code);
 		APP_ERROR_CHECK(err_code);				
-		SEGGER_RTT_printf(0,"\r\n\n");
+		NRF_LOG_RAW_INFO("\r\n\n");
 		// Wait for GC to complete on FILE
 		wait_for_fds_evt(FDS_EVT_GC);
 		
-		SEGGER_RTT_printf(0,"Test writing data to EOM RECKEY:\r\n");
+		NRF_LOG_INFO("Test writing data to EOM RECKEY:\r\n");
 		uint32_t testData1[] = {0x46464646,0x46464646,0x46464646};
 		err_code = fds_write(FILE_ID, REC_KEY_EOM, testData1, 3);
 		APP_ERROR_CHECK(err_code); 
@@ -954,14 +938,14 @@ int main(void)
 		wait_for_fds_evt(FDS_EVT_WRITE);
 
 
-		SEGGER_RTT_printf(0,"Writing data to LASTSEEN record:\r\n");
+		NRF_LOG_INFO("Writing data to LASTSEEN record:\r\n");
 		uint32_t testData[] = {0x00002223,0x00000000,0x00000000};
 		err_code = fds_write(FILE_ID, REC_KEY_LASTSEEN, testData, 3);
 		APP_ERROR_CHECK(err_code);
 		// Wait for write done event
 		wait_for_fds_evt(FDS_EVT_WRITE);
 		
-		SEGGER_RTT_printf(0,"----Device Flash Init Done----\r\n\n\n");
+		NRF_LOG_INFO("----Device Flash Init Done----\r\n\n\n");
 		#endif
 
 		nrf_delay_ms(1000);
@@ -971,12 +955,12 @@ int main(void)
 		// Start execution.
 		nrf_delay_ms(1000);
 		timers_start();
-		SEGGER_RTT_printf(0,"Times Start.. \n");
+		NRF_LOG_INFO("Times Start.. \n");
 
 		err_code = advertising_start();
-		SEGGER_RTT_printf(0,"adv start err: %d \n",err_code);
+		NRF_LOG_INFO("adv start err: %d \n",err_code);
 		APP_ERROR_CHECK(err_code);
-		SEGGER_RTT_printf(0,"Started Advertising \n");
+		NRF_LOG_INFO("Started Advertising \n");
 		
 		bsp_board_leds_on();
 		
