@@ -30,7 +30,6 @@
 #include "bsp_btn_ble.h"
 #include "app_timer.h"
 #include "app_util.h"
-#include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_temp.h"
 #include "ble_srv_common.h"
@@ -43,7 +42,6 @@
 #include "fds.h"
 #include "fstorage.h"
 #include "nrf_nvic.h"
-#include "nrf_log.h"
 #include "bledb.h"
 #include "nrf_drv_rtc.h"
 #include "nrf_drv_clock.h"
@@ -58,6 +56,8 @@
 #include "sht31.h"
 #include "battery_level.h"
 #include "ble_tbs.h"
+#define  NRF_LOG_MODULE_NAME 						"APP"
+#include "nrf_log.h"
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2        /**< Reply when unsupported features are requested. */
 #define CENTRAL_LINK_COUNT              0                                 /**< Number of central links used by the application. When changing this number remember to adjust the RAM settings*/
@@ -887,12 +887,12 @@ static void power_manage(void)
 int main(void)
 {
 		uint32_t err_code = NRF_SUCCESS;
-		bsp_board_leds_init();
-		
-		nrf_delay_ms(1000); // To allow for bounce during battery insertion 
+		bsp_board_leds_init();		
+		nrf_delay_ms(2000); // To allow for bounce during battery insertion 
 		
 		// Initialize.
 		log_init();
+		NRF_LOG_DEBUG("Starting Logging\n");
 		SEGGER_RTT_printf(0,"\r\n\n\n\nInitializing ...\n");
 
 		APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, false);
