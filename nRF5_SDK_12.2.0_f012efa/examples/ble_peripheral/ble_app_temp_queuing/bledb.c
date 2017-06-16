@@ -48,7 +48,7 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
         case FDS_EVT_INIT:
             if (p_fds_evt->result != FDS_SUCCESS)
             {
-              NRF_LOG_ERROR("FDS Initialization Failed \n");  // Initialization failed.
+              NRF_LOG_ERROR("FDS Initialization Failed %d\n",p_fds_evt->result);  // Initialization failed.
             } 
 						else initFlag = true;
             break;
@@ -86,7 +86,7 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
 						}
 						break;		
 				case FDS_EVT_DEL_RECORD:
-						NRF_LOG_INFO("Deleted record ID: %d, result: %d \r\n",p_fds_evt->del.record_id, p_fds_evt->result);
+						NRF_LOG_DEBUG("Deleted record ID: %d, result: %d \r\n",p_fds_evt->del.record_id, p_fds_evt->result);
 						if (p_fds_evt->result == FDS_SUCCESS)
 						{
 							if ((p_fds_evt->del.record_id % FREQ_OF_RUN_GC < 2) & 
@@ -291,11 +291,11 @@ ret_code_t dataToDB (uint16_t fileID, uint16_t recKey, uint32_t * data, uint16_t
 		ret_code_t ret = fds_find_and_delete(fileID, recKey);
 		if (ret == FDS_SUCCESS)
 		{
-			NRF_LOG_INFO("Old record will be upated  \r\n");
+			NRF_LOG_DEBUG("Old record will be upated  \r\n");
 		}
 		else if (ret == FDS_ERR_OPERATION_TIMEOUT)
 		{
-			NRF_LOG_INFO("New record will be written \r\n");
+			NRF_LOG_DEBUG("New record will be written \r\n");
 		}
 		else return ret;
 			
@@ -372,7 +372,7 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 				}
 
 				ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
-				if (ret != FDS_SUCCESS)
+				if (ret != NRF_SUCCESS)
 				{
 					NRF_LOG_ERROR("NUS string send error: %d",ret);
 					return ret;

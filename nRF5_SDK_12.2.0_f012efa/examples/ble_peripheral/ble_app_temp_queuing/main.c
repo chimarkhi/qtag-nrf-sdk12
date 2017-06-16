@@ -63,19 +63,19 @@
 #define PERIPHERAL_LINK_COUNT           1                                 /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
 #define TSTAMP_INTERVAL_IN_MS						1000
-#define ADV_INTERVAL_IN_MS							4000
+#define ADV_INTERVAL_IN_MS							2500
 #define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                 /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		2
+#define LOGINTERVAL_ADVINTERVAL_RATIO		60
 
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
 #define APP_COMPANY_IDENTIFIER          0x128B                            /**< Company identifier for TagBox */
 #define APP_BEACON_UUID                 0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-#define DEVICE_NAME											"XT86A6"
+#define DEVICE_NAME											"XT065D"
 #define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN        /**< UUID type for the Nordic UART Service (vendor specific). */
 #define DATAPACKET_UUID									0xAB04
 
@@ -84,8 +84,8 @@
 #define SLAVE_LATENCY                   0                                           /**< Slave latency. */
 #define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(4000, UNIT_10_MS)             /**< Connection supervisory timeout (4 seconds). */
 #define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER)  /**< Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (1 second). */
-#define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(30000, APP_TIMER_PRESCALER) /**< Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
-#define MAX_CONN_PARAMS_UPDATE_COUNT    3                                           /**< Number of attempts before giving up the connection parameter negotiation. */
+#define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(60000, APP_TIMER_PRESCALER) /**< Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
+#define MAX_CONN_PARAMS_UPDATE_COUNT    5                                           /**< Number of attempts before giving up the connection parameter negotiation. */
 
 #define DEAD_BEEF                       0xDEADBEEF		                        /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
@@ -257,8 +257,8 @@ void tstamp_reckey_init()
 			  (data[0] >= (uint32_t)REC_KEY_START ) 	&
 				err_code == FDS_SUCCESS	)
 		{
-			tstamp_sec = data[1];
-			recCounter_init((uint16_t)data[0]);
+			tstamp_sec = data[1]+1;
+			recCounter_init((uint16_t)data[0]+1);
 		}
 		else
 		{
@@ -296,7 +296,7 @@ void dataToDB_timer_timeout_handler(void * p_context)
 														 timeStamp,
 														 (temp << 16) | humid_batt};	
 		NRF_LOG_RAW_INFO("\r\n\n\n");
-		NRF_LOG_INFO("Data to DB: RecKey %08x, time %08x, data %08x\r\n", dataPacket[0], dataPacket[1], dataPacket[2]);
+		NRF_LOG_DEBUG("Data to DB: RecKey %08x, time %08x, data %08x\r\n", dataPacket[0], dataPacket[1], dataPacket[2]);
 		uint32_t err_code = dataToDB(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
 		// if data saved successfully, update the last seen reckey and tstamp in flash												 
 
@@ -433,11 +433,13 @@ static uint32_t services_init(void)
 
     nus_init.data_handler = nus_data_handler;
 		
+	  // Add Nordic Uart Service to GATT 
     err_code = ble_nus_init(&m_nus, &nus_init);
     if (err_code != NRF_SUCCESS) return err_code;
-		
-		err_code = ble_tbs_init(&m_tbs);
-		if (err_code != NRF_SUCCESS) return err_code;
+
+		// Add TagBox Service to GATT
+		//err_code = ble_tbs_init(&m_tbs);
+		//if (err_code != NRF_SUCCESS) return err_code;
 		
 		return err_code;
 }
@@ -590,6 +592,7 @@ static uint32_t advertising_stop(void)
 		}
 		return err_code;
 }
+
 
 
 /**@brief Function for the application's SoftDevice event handler.

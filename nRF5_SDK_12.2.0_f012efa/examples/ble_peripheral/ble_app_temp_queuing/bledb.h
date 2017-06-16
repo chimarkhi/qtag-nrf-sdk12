@@ -12,7 +12,7 @@
 #define REC_KEY_MAX	     			0xEEEE				// Maximum Record Key
 #define REC_KEY_LASTSEEN   		0xFFFE				// Record Key where copy of latest data-point is stored
 #define REC_KEY_EOM						0xFFFD				// Record Key with NUS end of message data
-#define DATA_POINTS						128						// Max data points the device can store
+#define DATA_POINTS						8192					// Max data points the device can store
 #define FREQ_OF_RUN_GC				25						// Run GC after every FREQ_OF_RUN_GC records are deleted
 #define WORDLEN_DATAPACKET		3
 

@@ -3186,7 +3186,7 @@
 // <i> @ref FDS_VIRTUAL_PAGE_SIZE * 4 bytes.
 
 #ifndef FDS_VIRTUAL_PAGES
-#define FDS_VIRTUAL_PAGES 2
+#define FDS_VIRTUAL_PAGES 41
 #endif
 
 // <o> FDS_VIRTUAL_PAGE_SIZE  - The size of a virtual page of flash memory, expressed in number of 4-byte words.
@@ -3198,7 +3198,7 @@
 // <2048=> 2048 
 
 #ifndef FDS_VIRTUAL_PAGE_SIZE
-#define FDS_VIRTUAL_PAGE_SIZE 1024
+#define FDS_VIRTUAL_PAGE_SIZE 2048
 #endif
 
 #endif //FDS_ENABLED
