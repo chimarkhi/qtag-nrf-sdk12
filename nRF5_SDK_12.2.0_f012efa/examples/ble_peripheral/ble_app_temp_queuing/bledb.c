@@ -90,7 +90,7 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt)
 						if (p_fds_evt->result == FDS_SUCCESS)
 						{
 							if ((p_fds_evt->del.record_id % FREQ_OF_RUN_GC < 2) & 
-									(p_fds_evt->del.record_id != REC_KEY_LASTSEEN ))
+									(p_fds_evt->del.record_key != REC_KEY_LASTSEEN ))
 							{
 								NRF_LOG_INFO("Scheduled GC being run\r\n");
 								fds_gc();
@@ -177,7 +177,7 @@ ret_code_t save_lastseen(uint16_t fileID, uint16_t recKey)
 				}
 				NRF_LOG_RAW_INFO("\r\n");
 				
-				err_code = fds_write(FILE_ID, REC_KEY_LASTSEEN, dataTemp, flash_record.p_header->tl.length_words);
+				err_code = fds_write(BACKUP_FILE_ID, REC_KEY_LASTSEEN, dataTemp, flash_record.p_header->tl.length_words);
 				if (err_code != FDS_SUCCESS)
 				{
 					NRF_LOG_ERROR("Update error : %d",err_code);
@@ -322,6 +322,126 @@ ret_code_t dataToDB (uint16_t fileID, uint16_t recKey, uint32_t * data, uint16_t
 		return NRF_SUCCESS;		
 }
 
+uint8_t check_startRecKey(uint16_t inRecKey, uint16_t currentRecKey)
+{
+		nusRecKey = inRecKey;
+		if (inRecKey == (uint16_t)FDS_RECORD_KEY_DIRTY)	return SYNCTYPE_INVALID;
+	
+		if (inRecKey <= currentRecKey)
+		{
+			if (inRecKey < currentRecKey - DATA_POINTS)  nusRecKey = currentRecKey - DATA_POINTS;
+			return SYNCTYPE_STRAIGHT;
+		}
+		else
+		{
+			if (currentRecKey > DATA_POINTS) 
+			{
+				nusRecKey = currentRecKey - DATA_POINTS;
+				return SYNCTYPE_STRAIGHT;
+			}
+			else if ((uint32_t)inRecKey < currentRecKey + 0xFFFF - DATA_POINTS) 
+			{
+				nusRecKey = currentRecKey + 0xFFFF - DATA_POINTS;
+				return SYNCTYPE_ROLLOVER;
+			}
+			else return SYNCTYPE_ROLLOVER;
+		}
+}
+
+
+uint8_t check_nusRecKey(uint16_t inRecKey, uint16_t currentRecKey)
+{
+		switch(syncType)
+		{
+			case SYNCTYPE_STRAIGHT:
+				if (nusRecKey < currentRecKey) return NUS_CONTINUE;
+				else if(nusRecKey == currentRecKey) return NUS_STOP;
+					else return NUS_NOACTION;
+				break;
+			case SYNCTYPE_ROLLOVER:
+				if ((nusRecKey > currentRecKey) & (nusRecKey < 0xFFFF-DATA_POINTS+currentRecKey)) return NUS_NOACTION;
+				else if (nusRecKey == currentRecKey) return NUS_STOP;
+					else return NUS_CONTINUE;
+				break;
+			case SYNCTYPE_INVALID:
+				return NUS_NOACTION;
+				break;
+		}
+}
+
+
+ret_code_t nus_dataPacket_send(ble_nus_t * p_nus, uint32_t data[], uint8_t dataLen)
+{
+		uint32_t ret = NRF_SUCCESS;
+	
+		uint8_t *p_dataPacket = (uint8_t *)data;
+		//uint8_t dataLengthInBytes = dataLen*4;
+		uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
+		uint8_t dataByteArray[dataLengthInBytes];
+		for (uint8_t i=0;i<dataLengthInBytes;i++)
+		{
+			dataByteArray[i] = p_dataPacket[i];
+			//NRF_LOG_RAW_INFO("%02x",dataByteArray[i]);
+		}
+
+		ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
+		if (ret != NRF_SUCCESS)
+		{
+			NRF_LOG_ERROR("NUS string send error: %d",ret);
+			return ret;
+		}
+			
+		NRF_LOG_INFO("Data sent over NUS:");
+		for (uint8_t i=0;i<dataLengthInBytes;i++)
+		{
+			NRF_LOG_RAW_INFO("%02x",dataByteArray[i]);
+		}
+		
+		return ret;
+}
+
+ret_code_t nus_eom_send(ble_nus_t * p_nus, uint8_t eomType)
+{
+		uint32_t ret = NRF_SUCCESS;
+		uint32_t data[] = {0,0x46464646,0x46464646};
+		switch(eomType)
+		{
+			case NUS_MSGTYPE_EOM:
+					data[0] = (uint32_t)REC_KEY_EOM;
+					break;
+			case NUS_MSGTYPE_DIRTYRECKEY:
+					data[0]	= FDS_RECORD_KEY_DIRTY;
+					break;
+			default:
+					data[0] = 0x46464646;
+					break;
+		}
+		
+		uint8_t *p_dataPacket = (uint8_t *)data;
+		uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
+		uint8_t dataByteArray[dataLengthInBytes];
+		for (uint8_t i=0;i<dataLengthInBytes;i++)
+		{
+			dataByteArray[i] = p_dataPacket[i];
+			//NRF_LOG_RAW_INFO("%02x",dataByteArray[i]);
+		}
+
+		ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
+		if (ret != NRF_SUCCESS)
+		{
+			NRF_LOG_ERROR("NUS string send error: %d",ret);
+			return ret;
+		}
+			
+		NRF_LOG_INFO("Data sent over NUS:");
+		for (uint8_t i=0;i<dataLengthInBytes;i++)
+		{
+			NRF_LOG_RAW_INFO("%02x",dataByteArray[i]);
+		}
+		
+		return ret;
+}
+
 
 ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 {
@@ -332,17 +452,10 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 		uint16_t recKey_current = get_recKey();
 
 		// Map inbound nusRecKey to a record in the DB		
-		if (nusRecKey != REC_KEY_EOM)  		
-		{	
-			recKey = ((nusRecKey-REC_KEY_START) % DATA_POINTS) + REC_KEY_START;
-		}
-		else
-		{
-			recKey = nusRecKey;
-		}
+		if (nusRecKey != REC_KEY_EOM) recKey = ((nusRecKey-REC_KEY_START) % DATA_POINTS) + REC_KEY_START;
+		else	recKey = nusRecKey;
 		
-		if ((recKey < recKey_current) | (recKey == REC_KEY_EOM)) 
-		{		
+
 			ret = fds_read(FILE_ID, recKey, data, dataLen);
 			
 			//	Handle exceptions like flash full etc : FDS_ERR_*	
@@ -359,33 +472,8 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 						break;
 				}
 			}
-			else 
-			{
-				uint8_t *p_dataPacket = (uint8_t *)data;
-				//uint8_t dataLengthInBytes = dataLen*4;
-				uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
-				uint8_t dataByteArray[dataLengthInBytes];
-				for (uint8_t i=0;i<dataLengthInBytes;i++)
-				{
-					dataByteArray[i] = p_dataPacket[i];
-					//NRF_LOG_RAW_INFO("%02x",dataByteArray[i]);
-				}
-
-				ret = ble_nus_string_send(p_nus, p_dataPacket, dataLengthInBytes);
-				if (ret != NRF_SUCCESS)
-				{
-					NRF_LOG_ERROR("NUS string send error: %d",ret);
-					return ret;
-				}
-					
-				NRF_LOG_INFO("Data sent over NUS:");
-				for (uint8_t i=0;i<dataLengthInBytes;i++)
-				{
-					NRF_LOG_RAW_INFO("%02x",dataByteArray[i]);
-				}
-			}
-		}
-		return NRF_SUCCESS;
+			else ret = nus_dataPacket_send(p_nus,&data[0],dataLen);
+			return ret;
 }
 
 void wait_for_fds_evt(fds_evt_id_t id)
