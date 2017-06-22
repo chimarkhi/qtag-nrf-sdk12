@@ -390,16 +390,16 @@ static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t lengt
 			NRF_LOG_INFO("Inside nus data handler\r\n");
 
 			NRF_LOG_INFO("data from central (Only 2 bytes used by code):");	
-			for (uint32_t i = 0; i < 4; i++)
+			for (uint32_t i = 0; i < length; i++)
 			{
 					NRF_LOG_RAW_INFO("%02x",p_data[1-i]);
 			}
 			NRF_LOG_RAW_INFO("\r\n");
-			//uint16_t inRecKey = p_data[1]<<8|p_data[0];
-			uint16_t inRecKey = (((p_data[0]-0x30)&0x0F)<<12|
-													 ((p_data[1]-0x30)&0x0F)<<8|
-													 ((p_data[2]-0x30)&0x0F)<<4|
-													 ((p_data[3]-0x30)&0x0F));
+			uint16_t inRecKey = p_data[1]<<8|p_data[0];
+//			uint16_t inRecKey = (((p_data[0]-0x30)&0x0F)<<12|
+//													 ((p_data[1]-0x30)&0x0F)<<8|
+//													 ((p_data[2]-0x30)&0x0F)<<4|
+//													 ((p_data[3]-0x30)&0x0F));
 			NRF_LOG_INFO("Start record : 0x%04x\r\n", inRecKey);
 			nusCurrentKey = get_recKey();
 			
