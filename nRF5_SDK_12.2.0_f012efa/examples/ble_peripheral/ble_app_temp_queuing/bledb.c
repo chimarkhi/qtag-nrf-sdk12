@@ -450,32 +450,36 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 		uint32_t recKey ;
 		uint32_t data[] = {0,0,0};
 		uint16_t dataLen;
-		ret_code_t ret;
+		ret_code_t ret = FDS_SUCCESS;
 		uint16_t recKey_current = get_recKey();
 
 		// Map inbound nusRecKey to a record in the DB		
-		if (nusRecKey != REC_KEY_EOM) recKey = ((nusRecKey-REC_KEY_START) % DATA_POINTS) + REC_KEY_START;
-		else	recKey = nusRecKey;
-		
-
+		if (nusRecKey != FDS_RECORD_KEY_DIRTY)
+		{
+			recKey = ((nusRecKey-REC_KEY_START) % DATA_POINTS) + REC_KEY_START;
 			ret = fds_read(FILE_ID, recKey, data, dataLen);
-			
-			//	Handle exceptions like flash full etc : FDS_ERR_*	
-			if (ret != FDS_SUCCESS)
+		}
+		
+		//	Handle exceptions like flash full etc : FDS_ERR_*	
+		if (ret != FDS_SUCCESS)
+		{
+			NRF_LOG_ERROR("Record read error: %d", ret);
+			switch (ret)
 			{
-				NRF_LOG_ERROR("Record read error: %d", ret);
-				switch (ret)
-				{
-					case FDS_ERR_OPERATION_TIMEOUT:
-						NRF_LOG_WARNING("RECKEY recKey not found in DB\r\n", ret);
-						return ret;
-					default:
-						ret = FDS_ERR_INTERNAL;
-						break;
-				}
+				case FDS_ERR_OPERATION_TIMEOUT:
+					NRF_LOG_WARNING("RECKEY not found in DB, err:%d\r\n", ret);
+					break;
+				case FDS_ERR_RECORD_TOO_LARGE:
+					NRF_LOG_WARNING("RECKEY too large, err:%d\r\n", ret);
+					break;
+				
+				default:
+					ret = FDS_ERR_INTERNAL;
+					break;
 			}
-			else ret = nus_dataPacket_send(p_nus,&data[0],dataLen);
-			return ret;
+		}
+		else ret = nus_dataPacket_send(p_nus,&data[0],dataLen);
+		return ret;
 }
 
 void wait_for_fds_evt(fds_evt_id_t id)
