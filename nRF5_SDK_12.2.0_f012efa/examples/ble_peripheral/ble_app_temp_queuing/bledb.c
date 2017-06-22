@@ -403,17 +403,19 @@ ret_code_t nus_dataPacket_send(ble_nus_t * p_nus, uint32_t data[], uint8_t dataL
 ret_code_t nus_eom_send(ble_nus_t * p_nus, uint8_t eomType)
 {
 		uint32_t ret = NRF_SUCCESS;
-		uint32_t data[] = {0,0x46464646,0x46464646};
+		uint32_t data[] = {0,0xFFFFFFFF,0xFFFFFFFF};
 		switch(eomType)
 		{
 			case NUS_MSGTYPE_EOM:
-					data[0] = (uint32_t)REC_KEY_EOM;
+					//data[0] = (uint32_t)REC_KEY_EOM;
+					data[0] 	= 0xFFFFFFFF;
 					break;
 			case NUS_MSGTYPE_DIRTYRECKEY:
-					data[0]	= FDS_RECORD_KEY_DIRTY;
+					//data[0]	= FDS_RECORD_KEY_DIRTY;
+					data[0]		= 0xFFFFFFFF;
 					break;
 			default:
-					data[0] = 0x46464646;
+					data[0] = 0xFFFFFFFF;
 					break;
 		}
 		
