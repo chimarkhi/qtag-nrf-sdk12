@@ -63,19 +63,18 @@
 #define PERIPHERAL_LINK_COUNT           1                                 /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
 #define TSTAMP_INTERVAL_IN_MS						1000
-#define ADV_INTERVAL_IN_MS							500
+#define ADV_INTERVAL_IN_MS							2500
 #define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                 /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		1
-
+#define LOGINTERVAL_ADVINTERVAL_RATIO		180																/** Logging interval = log_adv_ratio*adv_interval **/
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
 #define APP_COMPANY_IDENTIFIER          0x128B                            /**< Company identifier for TagBox */
 #define APP_BEACON_UUID                 0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-#define DEVICE_NAME											"XT86A6"
+#define DEVICE_NAME											"XT065D"
 #define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN        /**< UUID type for the Nordic UART Service (vendor specific). */
 #define DATAPACKET_UUID									0xAB04
 
@@ -84,15 +83,14 @@
 #define SLAVE_LATENCY                   0                                           /**< Slave latency. */
 #define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(4000, UNIT_10_MS)             /**< Connection supervisory timeout (4 seconds). */
 #define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER)  /**< Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (1 second). */
-#define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(15000, APP_TIMER_PRESCALER) /**< Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
-#define MAX_CONN_PARAMS_UPDATE_COUNT    10                                           /**< Number of attempts before giving up the connection parameter negotiation. */
+#define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(30000, APP_TIMER_PRESCALER) /**< Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
+#define MAX_CONN_PARAMS_UPDATE_COUNT    20                                           /**< Number of attempts before giving up the connection parameter negotiation. */
 
 #define DEAD_BEEF                       0xDEADBEEF		                        /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
 #define APP_TIMER_PRESCALER             0   		                              /**< Value of the RTC1 PRESCALER register. */
 #define APP_TIMER_MAX_TIMERS            3
 #define APP_TIMER_OP_QUEUE_SIZE         4		                                 /**< Size of timer operation queues. */
-#define TSTAMP_PRESCALER             		4095                                 /**< Value of the RTC1 PRESCALER register. */
 
 #define ADV_BUTTON											0
 
@@ -941,7 +939,7 @@ int main(void)
 		// Wait for write done event
 		wait_for_fds_evt(FDS_EVT_WRITE);
 		
-		NRF_LOG_INFO("----Device Flash Init Done----\r\n\n\n");
+		NRF_LOG_RAW_INFO("----Device Flash Init Done----\r\n\n\n");
 		#endif
 
 		nrf_delay_ms(1000);
