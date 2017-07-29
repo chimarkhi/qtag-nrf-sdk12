@@ -57,6 +57,7 @@
 #include "ble_tbs.h"
 #define  NRF_LOG_MODULE_NAME 						"APP"
 #include "nrf_log.h"
+#include "nrf_peripherals.h"
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2        /**< Reply when unsupported features are requested. */
 #define CENTRAL_LINK_COUNT              0                                 /**< Number of central links used by the application. When changing this number remember to adjust the RAM settings*/
@@ -74,7 +75,7 @@
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
 #define APP_COMPANY_IDENTIFIER          0x128B                            /**< Company identifier for TagBox */
 #define APP_BEACON_UUID                 0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-#define DEVICE_NAME											"XT065D"
+#define DEVICE_NAME											"XT77D5"
 #define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN        /**< UUID type for the Nordic UART Service (vendor specific). */
 #define DATAPACKET_UUID									0xAB04
 
@@ -156,9 +157,14 @@ static void advdata_update(void)
 		uint16_t 			temp, humid_batt;
 	
     ble_advdata_service_data_t service_data[1];
-
-		uint32_t temp_humid 	= get_temp_humid(&twi);
-		uint8_t batt_level 		= get_battery_level();
+		
+		#ifdef NRF51
+			uint32_t temp_humid 	= 47;
+			uint8_t batt_level 		= 74;
+		#else	
+			uint32_t temp_humid 	= get_temp_humid(&twi);
+			uint8_t batt_level 		= get_battery_level();
+		#endif
 	
 		if (temp_humid == I2C_READ_ERROR)
 		{

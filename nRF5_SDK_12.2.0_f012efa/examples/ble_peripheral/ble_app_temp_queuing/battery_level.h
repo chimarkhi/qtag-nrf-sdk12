@@ -5,7 +5,8 @@
 #define ADC_REF_VBG_VOLTAGE_IN_MILLIVOLTS 1200                                         /**< Value in millivolts for voltage used as reference in ADC conversion on NRF51. */
 #define ADC_INPUT_PRESCALER               3                                            /**< Input prescaler for ADC convestion on NRF51. */
 #define ADC_RES_10BIT                     1024                                         /**< Maximum digital value for 10-bit ADC conversion. */
-#ifdef ADC_PRESENT
+
+#ifdef NRF51
 #include "nrf_drv_adc.h"
 #else
 #include "nrf_drv_saadc.h"
@@ -31,7 +32,7 @@
 #define BATTLVL_CONV_ERROR 	0x02
 
 #ifdef ADC_PRESENT
-void adc_event_handler(nrf_drv_adc_evt_t const * p_event)
+void adc_event_handler(nrf_drv_adc_evt_t const * p_event);
 #else // SAADC_PRESENT
 void saadc_event_handler(nrf_drv_saadc_evt_t const * p_event);
 #endif // ADC_PRESENT

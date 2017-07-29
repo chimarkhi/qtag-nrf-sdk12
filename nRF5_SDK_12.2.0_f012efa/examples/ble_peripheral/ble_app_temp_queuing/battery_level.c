@@ -1,13 +1,7 @@
-#include "battery_level.h"
-
-#ifdef ADC_PRESENT
-#include "nrf_drv_adc.h"
-#else
-#include "nrf_drv_saadc.h"
-#endif //ADC_PRESENT
-
 #define  NRF_LOG_MODULE_NAME 						"BATTERY_LEVEL"
 #include "nrf_log.h"
+#include "battery_level.h"
+
 
 #ifdef ADC_PRESENT
 static nrf_adc_value_t adc_buf[1];
@@ -40,7 +34,7 @@ static uint8_t battery_level_in_percent_fr03(const uint16_t mvolts)
 {
     uint8_t battery_level;
 
-    if (mvolts >= 3000)
+    if (mvolts >= 3400)
     {
         battery_level = 100;
     }
@@ -86,25 +80,20 @@ void adc_event_handler(nrf_drv_adc_evt_t const * p_event)
         adc_result = p_event->data.done.p_buffer[0];
 
         err_code = nrf_drv_adc_buffer_convert(p_event->data.done.p_buffer, 1);
-        APP_ERROR_CHECK(err_code);
+    
 
         batt_lvl_in_milli_volts = ADC_RESULT_IN_MILLI_VOLTS(adc_result) +
                                   DIODE_FWD_VOLT_DROP_MILLIVOLTS;
         percentage_batt_lvl = battery_level_in_percent_fr03(batt_lvl_in_milli_volts);
 
-        err_code = ble_bas_battery_level_update(&m_bas, percentage_batt_lvl);
-        if (
-            (err_code != NRF_SUCCESS)
-            &&
-            (err_code != NRF_ERROR_INVALID_STATE)
-            &&
-            (err_code != BLE_ERROR_NO_TX_PACKETS)
-            &&
-            (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-           )
-        {
-            APP_ERROR_HANDLER(err_code);
-        }
+				if (err_code != NRF_SUCCESS)
+				{
+					NRF_LOG_ERROR("Battery level conversion failed\r\n");
+				}
+				else
+				{
+					NRF_LOG_DEBUG("Battery level (from callback): %d\r\n",percentage_batt_lvl);
+				}
     }
 }
 
@@ -154,28 +143,23 @@ void adc_configure(void)
 {
     #ifdef ADC_PRESENT
     ret_code_t err_code = nrf_drv_adc_init(NULL, adc_event_handler);
-    APP_ERROR_CHECK(err_code);
 
     static nrf_drv_adc_channel_t channel =
-        NRF_DRV_ADC_DEFAULT_CHANNEL(NRF_ADC_CONFIG_INPUT_DISABLED);
+    NRF_DRV_ADC_DEFAULT_CHANNEL(NRF_ADC_CONFIG_INPUT_DISABLED);
     // channel.config.config.input = NRF_ADC_CONFIG_SCALING_SUPPLY_ONE_THIRD;
     channel.config.config.input = (uint32_t)NRF_ADC_CONFIG_SCALING_SUPPLY_ONE_THIRD;
     nrf_drv_adc_channel_enable(&channel);
-
     err_code = nrf_drv_adc_buffer_convert(&adc_buf[0], 1);
-    APP_ERROR_CHECK(err_code);
+
     #else //  SAADC_PRESENT
     ret_code_t err_code = nrf_drv_saadc_init(NULL, saadc_event_handler);
     APP_ERROR_CHECK(err_code);
-
     nrf_saadc_channel_config_t config =
         NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_VDD);
     err_code = nrf_drv_saadc_channel_init(0, &config);
     APP_ERROR_CHECK(err_code);
-
 //    err_code = nrf_drv_saadc_buffer_convert(&adc_buf[0], 1);
 //    APP_ERROR_CHECK(err_code);
-
 //    err_code = nrf_drv_saadc_buffer_convert(&adc_buf[1], 1);
 //   APP_ERROR_CHECK(err_code);
     #endif //ADC_PRESENT
@@ -183,10 +167,14 @@ void adc_configure(void)
 
 uint8_t get_battery_level(void)
 {
-		nrf_saadc_value_t			batt_soc;
 		uint8_t percentage_batt_lvl;
 		uint32_t err_code;
+
+		#ifdef ADC_PRESENT 
+		percentage_batt_lvl = 47;
 	
+		#else
+		nrf_saadc_value_t			batt_soc;	
     err_code = nrf_drv_saadc_sample_convert(0,&batt_soc);
 	
 		if (err_code != NRF_SUCCESS)
@@ -200,5 +188,6 @@ uint8_t get_battery_level(void)
                                   DIODE_FWD_VOLT_DROP_MILLIVOLTS;
 			percentage_batt_lvl = battery_level_in_percent_fr03(batt_lvl_in_milli_volts);
 		}
+		#endif
 		return percentage_batt_lvl;
 }
