@@ -69,13 +69,13 @@
 #define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		180																/** Logging interval = log_adv_ratio*adv_interval **/
+#define LOGINTERVAL_ADVINTERVAL_RATIO		2																/** Logging interval = log_adv_ratio*adv_interval **/
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
 #define APP_COMPANY_IDENTIFIER          0x128B                            /**< Company identifier for TagBox */
 #define APP_BEACON_UUID                 0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-#define DEVICE_NAME											"XT77D5"
+#define DEVICE_NAME											"XTC821"
 #define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN        /**< UUID type for the Nordic UART Service (vendor specific). */
 #define DATAPACKET_UUID									0xAB04
 
@@ -148,6 +148,20 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
 
+/**@brief Function to get internal temperature of IC. Used for calibration */
+uint32_t temperature_data_get(void)
+{
+    int32_t temp;
+    uint32_t err_code;
+
+    err_code = sd_temp_get(&temp);
+    APP_ERROR_CHECK(err_code);
+
+    temp = temp*25; // -200 for Minew_Tag16 and 07; -425 for Minew_tag13;
+    int8_t exponent = -2;
+    return ((exponent & 0xFF) << 24) | (temp & 0x00FFFFFF);
+}
+
 
 static void advdata_update(void)
 {
@@ -157,13 +171,18 @@ static void advdata_update(void)
 		uint16_t 			temp, humid_batt;
 	
     ble_advdata_service_data_t service_data[1];
-		
+			
+	
 		#ifdef NRF51
 			uint32_t temp_humid 	= 47;
 			uint8_t batt_level 		= 74;
-		#else	
+		#else 
 			uint32_t temp_humid 	= get_temp_humid(&twi);
 			uint8_t batt_level 		= get_battery_level();
+		#endif
+	  
+		#ifdef CALIBRATION
+			uint16_t temp_internal = (uint16_t)temperature_data_get();
 		#endif
 	
 		if (temp_humid == I2C_READ_ERROR)
@@ -173,7 +192,11 @@ static void advdata_update(void)
 		else
 		{
 			temp					= (uint16_t)(temp_humid>>16);
-			humid_batt		= temp_humid<<8|batt_level;
+			#ifdef CALIBRATION  // Internal temperature sent instead of humidity+battery 
+				humid_batt  = temp_internal;
+			#else
+				humid_batt	= temp_humid<<8|batt_level;
+			#endif
 		}
 		
 		uint16_t timeStamp[2] = {(uint16_t)tstamp_sec,(uint16_t)(tstamp_sec>>16)};
@@ -283,7 +306,11 @@ void dataToDB_timer_timeout_handler(void * p_context)
 		
 		uint32_t temp_humid		= get_temp_humid(&twi);
 		uint8_t batt_level		= get_battery_level();
-		
+
+		#ifdef CALIBRATION
+			uint16_t temp_internal = (uint16_t)temperature_data_get();
+		#endif
+	
 		if (temp_humid == I2C_READ_ERROR)
 		{	
 			return;
@@ -291,7 +318,11 @@ void dataToDB_timer_timeout_handler(void * p_context)
 		else
 		{
 			temp				= (uint16_t)(temp_humid>>16);
-			humid_batt	= temp_humid<<8 | batt_level;
+			#ifdef CALIBRATION  // Internal temperature sent instead of humidity+battery 
+				humid_batt  = temp_internal;
+			#else
+				humid_batt	= temp_humid<<8 | batt_level;
+			#endif
 		}
 		
 		uint32_t timeStamp = date_hour_seconds;
@@ -948,6 +979,11 @@ int main(void)
 		NRF_LOG_RAW_INFO("----Device Flash Init Done----\r\n\n\n");
 		#endif
 
+		#ifdef CALIBRATION
+		nrf_delay_ms(1000);
+		NRF_LOG_RAW_INFO("\r\n\n\n----THIS IS A CALIBRATION DEVICE ----\r\n\n\n");
+		#endif
+		
 		nrf_delay_ms(1000);
 		
 		tstamp_reckey_init();		
