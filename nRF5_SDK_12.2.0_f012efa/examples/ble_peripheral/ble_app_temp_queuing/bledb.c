@@ -145,10 +145,8 @@ ret_code_t fds_write(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t
 
 ret_code_t save_lastseen(uint16_t fileID, uint16_t recKey)
 {
-		fds_record_t        record;
 		fds_flash_record_t  flash_record;
 		fds_record_desc_t   record_desc;
-		fds_record_chunk_t  record_chunk;
 		uint32_t 						data[3] = {0,0,0};
 		
 		fds_find_token_t    ftok ={0};//Important, make sure you zero init the ftok token
@@ -357,15 +355,15 @@ uint8_t check_nusRecKey(uint16_t inRecKey, uint16_t currentRecKey)
 				if (nusRecKey < currentRecKey) return NUS_CONTINUE;
 				else if(nusRecKey == currentRecKey) return NUS_STOP;
 					else return NUS_NOACTION;
-				break;
 			case SYNCTYPE_ROLLOVER:
 				if ((nusRecKey > currentRecKey) & (nusRecKey < 0xFFFF-DATA_POINTS+currentRecKey)) return NUS_NOACTION;
 				else if (nusRecKey == currentRecKey) return NUS_STOP;
 					else return NUS_CONTINUE;
-				break;
 			case SYNCTYPE_INVALID:
 				return NUS_NOACTION;
-				break;
+			default:
+				NRF_LOG_WARNING("Invalid SYNCTYPE at check_nusRecKey call ");
+				return NUS_NOACTION;
 		}
 }
 
@@ -375,9 +373,9 @@ ret_code_t nus_dataPacket_send(ble_nus_t * p_nus, uint32_t data[], uint8_t dataL
 		uint32_t ret = NRF_SUCCESS;
 	
 		uint8_t *p_dataPacket = (uint8_t *)data;
-		//uint8_t dataLengthInBytes = dataLen*4;
 		uint8_t dataLengthInBytes = WORDLEN_DATAPACKET*4;
 		uint8_t dataByteArray[dataLengthInBytes];
+
 		for (uint8_t i=0;i<dataLengthInBytes;i++)
 		{
 			dataByteArray[i] = p_dataPacket[i];
@@ -472,7 +470,6 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 				case FDS_ERR_RECORD_TOO_LARGE:
 					NRF_LOG_WARNING("RECKEY too large, err:%d\r\n", ret);
 					break;
-				
 				default:
 					ret = FDS_ERR_INTERNAL;
 					break;

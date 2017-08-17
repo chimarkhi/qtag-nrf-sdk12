@@ -23,106 +23,36 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <inttypes.h>
-#include "ble_advdata.h"
-#include "nordic_common.h"
-#include "softdevice_handler.h"
-#include "bsp.h"
-#include "bsp_btn_ble.h"
-#include "app_timer.h"
-#include "app_util.h"
-#include "nrf_log_ctrl.h"
-#include "nrf_temp.h"
-#include "ble_srv_common.h"
-#include "app_timer.h"
-#include "SEGGER_RTT.h"
-#include "nrf_delay.h"
-#include "ble_advdata.h"
-#include "ble_advertising.h"
-#include "ble_gap.h"
-#include "fds.h"
-#include "fstorage.h"
-#include "nrf_nvic.h"
-#include "bledb.h"
-#include "nrf_drv_rtc.h"
-#include "nrf_drv_clock.h"
-#include "time.h"
-#include "ble_nus.h"
-#include "app_uart.h"
-#include "app_util_platform.h"
-#include "ble_conn_params.h"
-#include "ble_hci.h"
-#include "nrf_drv_twi.h"
-#include "sht31.h"
-#include "battery_level.h"
-#include "ble_tbs.h"
+#include "main.h"
+
 #define  NRF_LOG_MODULE_NAME 						"APP"
 #include "nrf_log.h"
-#include "nrf_peripherals.h"
+#include "advertising.h"
 
-#define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2        /**< Reply when unsupported features are requested. */
-#define CENTRAL_LINK_COUNT              0                                 /**< Number of central links used by the application. When changing this number remember to adjust the RAM settings*/
-#define PERIPHERAL_LINK_COUNT           1                                 /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
-
-#define TSTAMP_INTERVAL_IN_MS						1000
-#define ADV_INTERVAL_IN_MS							2500
-#define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                 /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
-#define ADV_INTERVAL				    				MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
-#define ADVDATA_UPDATE_INTERVAL					APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define TSTAMP_INTERVAL									APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO		180																/** Logging interval = log_adv_ratio*adv_interval **/
-
-#define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
-#define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
-#define APP_COMPANY_IDENTIFIER          0x128B                            /**< Company identifier for TagBox */
-#define APP_BEACON_UUID                 0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-#define DEVICE_NAME											"XT77D5"
-#define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN        /**< UUID type for the Nordic UART Service (vendor specific). */
-#define DATAPACKET_UUID									0xAB04
-
-#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(7.5, UNIT_1_25_MS)  	          /**< Minimum acceptable connection interval (7.5 milli seconds). */
-#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(12.5, UNIT_1_25_MS)            /**< Maximum acceptable connection interval (0.65 second). */
-#define SLAVE_LATENCY                   0                                           /**< Slave latency. */
-#define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(4000, UNIT_10_MS)             /**< Connection supervisory timeout (4 seconds). */
-#define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER)  /**< Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (1 second). */
-#define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(30000, APP_TIMER_PRESCALER) /**< Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
-#define MAX_CONN_PARAMS_UPDATE_COUNT    20                                           /**< Number of attempts before giving up the connection parameter negotiation. */
-
-#define DEAD_BEEF                       0xDEADBEEF		                        /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
-
-#define APP_TIMER_PRESCALER             0   		                              /**< Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_MAX_TIMERS            3
-#define APP_TIMER_OP_QUEUE_SIZE         4		                                 /**< Size of timer operation queues. */
-
-#define ADV_BUTTON											0
 
 static ble_nus_t                        m_nus;                                      /**< Structure to identify the Nordic UART Service. */
-static ble_tbs_t												m_tbs;																			/**< Structure to identify the TagBox Service. */
+//static ble_tbs_t						m_tbs;																			/**< Structure to identify the TagBox Service. */
 static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
-static nrf_drv_twi_t 										twi = NRF_DRV_TWI_INSTANCE(0);
+static nrf_drv_twi_t 					twi = NRF_DRV_TWI_INSTANCE(0);
+
 
 
 // Global variables
 uint16_t nusRecKey;
 uint16_t nusCurrentKey;
-time_t tstamp_sec;
+uint32_t tstamp_sec;
+
+volatile advertising_mode_t advMode;
 volatile bool initFlag = false;
 volatile bool gcDone = false;
 volatile bool writeFlag = false;
-volatile bool isAdvertising = false;
 volatile uint8_t syncType = SYNCTYPE_STRAIGHT;
-
-static ble_gap_adv_params_t m_adv_params;                                 /**< Parameters to be passed to the stack when starting advertising. */
-static uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH] =                    /**< Information advertised by the Beacon. */
-{
-    APP_ADV_DATA_LENGTH, // Manufacturer specific information. Specifies the length of the
-                         // manufacturer specific data in this implementation.
-};
 
 
 APP_TIMER_DEF(m_advdata_update_timer);
 APP_TIMER_DEF(m_dataToDB_timer);
 APP_TIMER_DEF(m_tstamp_timer);
-
+APP_TIMER_DEF(m_dynadv_timer_timer);
 
 /***@brief function for initializing nrf logging.
 */
@@ -132,115 +62,30 @@ void log_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
-/**@brief Callback function for asserts in the SoftDevice.
- *
- * @details This function will be called in case of an assert in the SoftDevice.
- *
- * @warning This handler is an example only and does not fit a final product. You need to analyze
- *          how your product is supposed to react in case of Assert.
- * @warning On assert from the SoftDevice, the system can only recover on reset.
- *
- * @param[in]   line_num   Line number of the failing ASSERT call.
- * @param[in]   file_name  File name of the failing ASSERT call.
- */
-void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
+void dynadv_timer_timeout_handler(void * p_context)
 {
-    app_error_handler(DEAD_BEEF, line_num, p_file_name);
+	switch(advMode)
+	{
+		case DYNADV_ADV_MODE_FAST:
+			dynamic_advertising_handler(advMode, DYNADV_EVT_FAST_MODE_TIMEOUT);
+			break;
+		case DYNADV_ADV_MODE_SLOW_UNCONN:
+			dynamic_advertising_handler(advMode, DYNADV_EVT_UNCONN_MODE_TIMEOUT);
+			break;
+		default:
+			break;
+	}
 }
-
-
-static void advdata_update(void)
-{
-    uint32_t      err_code;
-    ble_advdata_t advdata;
-    uint8_t       flags = BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED;
-		uint16_t 			temp, humid_batt;
-	
-    ble_advdata_service_data_t service_data[1];
-		
-		#ifdef NRF51
-			uint32_t temp_humid 	= 47;
-			uint8_t batt_level 		= 74;
-		#else	
-			uint32_t temp_humid 	= get_temp_humid(&twi);
-			uint8_t batt_level 		= get_battery_level();
-		#endif
-	
-		if (temp_humid == I2C_READ_ERROR)
-		{
-			return;
-		}
-		else
-		{
-			temp					= (uint16_t)(temp_humid>>16);
-			humid_batt		= temp_humid<<8|batt_level;
-		}
-		
-		uint16_t timeStamp[2] = {(uint16_t)tstamp_sec,(uint16_t)(tstamp_sec>>16)};
-		uint16_t recKey 	 		= get_recKey();
-	
-		uint16_t dataPacket[2*WORDLEN_DATAPACKET] = {APP_COMPANY_IDENTIFIER, recKey,
-													 timeStamp[0], timeStamp[1],
-													 temp,  			 humid_batt};	
-	
-		service_data[0].service_uuid = DATAPACKET_UUID;
-    service_data[0].data.size    = 4*WORDLEN_DATAPACKET;
-    service_data[0].data.p_data  = (uint8_t *) &dataPacket;
-
-
-
-    // Build and set advertising data
-    memset(&advdata, 0, sizeof(advdata));
-
-//    ble_advdata_manuf_data_t manuf_specific_data;
-//    manuf_specific_data.company_identifier = APP_COMPANY_IDENTIFIER;
-//    manuf_specific_data.data.p_data = (uint8_t *)m_beacon_info;
-//    manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
-
-    advdata.include_appearance  		= false;
-		advdata.name_type               = BLE_ADVDATA_SHORT_NAME;
-		advdata.short_name_len					= 6;
-//    advdata.p_manuf_specific_data 	= &manuf_specific_data;
-
-    advdata.flags		         				= flags;
-    advdata.service_data_count   		= 1;
-    advdata.p_service_data_array 		= service_data;
-
-    err_code = ble_advdata_set(&advdata, NULL);
-    //NRF_LOG_DEBUG("adv set err: %d\r\n",err_code);
-    APP_ERROR_CHECK(err_code);
-		
-}
-
-
-void indicate_advertising(void)
-{
-		if (isAdvertising)
-		{
-			// Turn on LED to indicate advertising
-			nrf_gpio_pin_write(19,1); // Minew S1 v1.0 green LED
-			//nrf_gpio_pin_write(17,1); 	// Minew S1 v0.9 blue LED		
-			//NRF_LOG_DEBUG("LED ON");
-	
-			nrf_delay_ms(5);
-			// Turn off LED 
-			nrf_gpio_pin_write(19,0); // Minew S1 v0.9 green LED
-			//nrf_gpio_pin_write(17,0);		// Minew S1 v0.9 blue LED
-			//NRF_LOG_DEBUG("LED OFF\r\n");
-		}
-}
-
 
 void advdata_update_timer_timeout_handler(void * p_context)
 {
-	advdata_update();
-	indicate_advertising();
+	advdata_update(advMode);
+	indicate_advertising(advMode);
 }
 
 void tstamp_timer_timeout_handler(void * p_context)
 {
-	 ++tstamp_sec;
-//	NRF_LOG_DEBUG("Timestamp %d\r\n",tstamp_sec);
+	++tstamp_sec;
 }
 
 /**@brief Function for the tstamp and record key
@@ -258,9 +103,9 @@ void tstamp_reckey_init()
 		err_code = fds_read(BACKUP_FILE_ID, REC_KEY_LASTSEEN, data, dataLen);
 		if (err_code != NRF_SUCCESS) NRF_LOG_ERROR("FDS read error %d", err_code);
 		
-		if ((data[0] <=  (uint32_t)0xFFFF) 			& 
-			  (data[0] >= (uint32_t)REC_KEY_START ) 	&
-				err_code == FDS_SUCCESS	)
+		if ((data[0] <= (uint32_t)0xFFFF)
+			& (data[0] >= (uint32_t)REC_KEY_START )
+			& (err_code == FDS_SUCCESS)	)
 		{
 			tstamp_sec = data[1]+1;
 			recCounter_init((uint16_t)data[0]+1);
@@ -274,35 +119,54 @@ void tstamp_reckey_init()
 		NRF_LOG_INFO("Starting from RECKEY,tstamp: [%04x,%08x]\r\n",(uint16_t)data[0],tstamp_sec);
 }
 
-
-void dataToDB_timer_timeout_handler(void * p_context)
+uint32_t get_telemetry_data(uint16_t* temp, uint8_t* humid, uint8_t* batt_level, uint32_t* timeStamp, uint16_t* recKey)
 {
-		time_t date_hour_seconds = tstamp_sec;
-		uint16_t temp, humid_batt;
+		uint32_t temp_humid;
 		
-		
-		uint32_t temp_humid		= get_temp_humid(&twi);
-		uint8_t batt_level		= get_battery_level();
-		
+		#ifdef NRF51
+			temp_humid 	= 47;
+			batt_level 	= 74;
+		#else	
+			temp_humid 	= get_temp_humid(&twi);
+			*batt_level 	= get_battery_level();
+		#endif
+	
 		if (temp_humid == I2C_READ_ERROR)
-		{	
-			return;
+		{
+			return I2C_READ_ERROR;
 		}
 		else
 		{
-			temp				= (uint16_t)(temp_humid>>16);
-			humid_batt	= temp_humid<<8 | batt_level;
+			*temp			= (uint16_t)(temp_humid>>16);
+			*humid			= (uint8_t)temp_humid;
 		}
 		
-		uint32_t timeStamp = date_hour_seconds;
-		uint32_t recKey = get_recKey();
+		// Add logic to do data sanity checks on temperature, humidity and battery
 		
+		*timeStamp = tstamp_sec;
+		*recKey = get_recKey();
+		
+		return NRF_SUCCESS;
+}
+
+
+void dataToDB_timer_timeout_handler(void * p_context)
+{
+		uint32_t	timeStamp;
+		uint16_t 	temp;
+		uint8_t 	humid, batt_level;
+		uint16_t 	recKey;
+			
+		uint32_t err_code = get_telemetry_data(&temp, &humid, &batt_level, &timeStamp, &recKey);		
+		if (err_code != NRF_SUCCESS) return; // Do not store data in local db in case of errors
+	
 		uint32_t dataPacket[WORDLEN_DATAPACKET] = {recKey,
-														 timeStamp,
-														 (temp << 16) | humid_batt};	
+													timeStamp,
+													(temp << 16) | (humid << 8) | batt_level};	
+
 		NRF_LOG_RAW_INFO("\r\n\n\n");
 		NRF_LOG_DEBUG("Data to DB: RecKey %08x, time %08x, data %08x\r\n", dataPacket[0], dataPacket[1], dataPacket[2]);
-		uint32_t err_code = dataToDB(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
+		err_code = dataToDB(FILE_ID, recKey, dataPacket, WORDLEN_DATAPACKET);
 		// if data saved successfully, update the last seen reckey and tstamp in flash												 
 
 		if (err_code == NRF_SUCCESS) 
@@ -321,7 +185,7 @@ void dataToDB_timer_timeout_handler(void * p_context)
 static void timers_init(void)
 {
     // Initialize timer module, making it use the scheduler
-    APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, NULL);
+    APP_TIMER_APPSH_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, true);
 
     uint32_t err_code = app_timer_create(&m_advdata_update_timer, APP_TIMER_MODE_REPEATED, advdata_update_timer_timeout_handler);
     APP_ERROR_CHECK(err_code);
@@ -329,8 +193,12 @@ static void timers_init(void)
     err_code = app_timer_create(&m_dataToDB_timer, APP_TIMER_MODE_REPEATED, dataToDB_timer_timeout_handler);
     APP_ERROR_CHECK(err_code);
 
-		err_code = app_timer_create(&m_tstamp_timer, APP_TIMER_MODE_REPEATED, tstamp_timer_timeout_handler);
+	err_code = app_timer_create(&m_tstamp_timer, APP_TIMER_MODE_REPEATED, tstamp_timer_timeout_handler);
     APP_ERROR_CHECK(err_code);	
+
+	//Create timer used in dynamic advertising for FAST_MODE and UNCONN_MODE timeouts
+	err_code = app_timer_create(&m_dynadv_timer_timer, APP_TIMER_MODE_SINGLE_SHOT, dynadv_timer_timeout_handler);
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -346,8 +214,46 @@ static void timers_start(void)
 
     err_code = app_timer_start(m_tstamp_timer, TSTAMP_INTERVAL, NULL);
     APP_ERROR_CHECK(err_code);
-
 }
+
+
+/**@brief Function for starting dynamic advertising timeout timers
+*/
+uint32_t dynadv_timeout_timer_start(uint32_t timer_ticks)
+{
+    uint32_t err_code = app_timer_start(m_advdata_update_timer, timer_ticks, NULL);
+    return err_code;
+}
+
+/**@brief Function for starting dynamic advertising timeout timers
+*/
+uint32_t dynadv_timeout_timer_stop(void)
+{
+    uint32_t err_code = app_timer_stop(m_advdata_update_timer);
+    return err_code;					// TBD error handling
+}
+
+
+/**@brief 	Function for reloading advdata update timer with new timeout value 
+	 @details	In case of failure restart the timer with default value
+	 @input 	timeout_ticks: 	new value to be loaded
+*/
+uint32_t dynadv_timer_update(uint32_t timeout_ticks)
+{
+	uint32_t err_code = app_timer_stop(m_advdata_update_timer);
+	
+	if (err_code == NRF_SUCCESS)
+	{
+		err_code = app_timer_start(m_advdata_update_timer, timeout_ticks, NULL);
+		NRF_LOG_INFO("Timer restarted with NEW timeout value: %d\r\n", timeout_ticks);
+	}
+	else 
+	{
+		NRF_LOG_ERROR("Timer could not be restarted with new timeout value error: %d\r\n", timeout_ticks);
+	}
+	return err_code;
+}
+
 
 static void gap_params_init(void)
 {
@@ -396,14 +302,14 @@ static void nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t lengt
 			NRF_LOG_INFO("data from central (Only 2 bytes used by code):");	
 			for (uint32_t i = 0; i < length; i++)
 			{
-					NRF_LOG_RAW_INFO("%02x",p_data[1-i]);
+				NRF_LOG_RAW_INFO("%02x",p_data[1-i]);
 			}
 			NRF_LOG_RAW_INFO("\r\n");
 			uint16_t inRecKey = p_data[1]<<8|p_data[0];
 //			uint16_t inRecKey = (((p_data[0]-0x30)&0x0F)<<12|
-//													 ((p_data[1]-0x30)&0x0F)<<8|
-//													 ((p_data[2]-0x30)&0x0F)<<4|
-//													 ((p_data[3]-0x30)&0x0F));
+//								((p_data[1]-0x30)&0x0F)<<8|
+//								((p_data[2]-0x30)&0x0F)<<4|
+//								((p_data[3]-0x30)&0x0F));
 			NRF_LOG_INFO("Start record : 0x%04x\r\n", inRecKey);
 			nusCurrentKey = get_recKey();
 			
@@ -517,85 +423,6 @@ static void sleep_mode_enter(void)
 }
 
 
-
-/**@brief Function for initializing the Advertising functionality.
- *
- * @details Encodes the required advertising data and passes it to the stack.
- *          Also builds a structure to be passed to the stack when starting advertising.
- */
-static void advertising_init(void)
-{
-    uint32_t      err_code;
-    ble_advdata_t advdata;
-    uint8_t       flags = BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED;
-
-    ble_advdata_manuf_data_t manuf_specific_data;
-
-    manuf_specific_data.company_identifier = APP_COMPANY_IDENTIFIER;
-
-    manuf_specific_data.data.p_data = (uint8_t *) m_beacon_info;
-    manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
-
-    // Build and set advertising data.
-    memset(&advdata, 0, sizeof(advdata));
-
-    advdata.name_type             = BLE_ADVDATA_NO_NAME;
-    advdata.flags                 = flags;
-    advdata.p_manuf_specific_data = &manuf_specific_data;
-		
-    err_code = ble_advdata_set(&advdata, NULL);
-		APP_ERROR_CHECK(err_code);
-		
-    // Initialize advertising parameters (used when starting advertising).
-    memset(&m_adv_params, 0, sizeof(m_adv_params));
-
-//		uint8_t adv_mult 				 = ble_tbs_get_advinterval(&m_tbs);
-//		uint16_t adv_interval		 = MSEC_TO_UNITS(adv_mult*ADV_INTERVAL_UNIT_IN_MS, UNIT_0_625_MS);
-		
-    m_adv_params.type        = BLE_GAP_ADV_TYPE_ADV_IND;
-		m_adv_params.p_peer_addr = NULL;                             // Undirected advertisement.
-    m_adv_params.fp          = BLE_GAP_ADV_FP_ANY;
-    m_adv_params.interval    = ADV_INTERVAL;
-    m_adv_params.timeout     = APP_CFG_NON_CONN_ADV_TIMEOUT;
-}
-
-
-/**@brief Function for starting advertising.
- */
-static uint32_t advertising_start(void)
-{
-    uint32_t err_code =  NRF_SUCCESS;
-
-    err_code = sd_ble_gap_adv_start(&m_adv_params);
-		if (err_code == NRF_SUCCESS)
-		{
-			isAdvertising = true;
-			NRF_LOG_INFO("Advertising started");
-		}
-		return err_code;
-}
-
-/**@brief Function for stopping advertising.
- */
-static uint32_t advertising_stop(void)
-{
-    uint32_t err_code;
-		if(isAdvertising)
-		{
-			err_code = sd_ble_gap_adv_stop();
-		}
-		else NRF_LOG_WARNING("/r/n/nAdv stop called, but already not advertising/r/n/n");
-		
-		if (err_code == NRF_SUCCESS) 
-		{
-			isAdvertising = false;
-			NRF_LOG_INFO("Advertising stopped");	
-		}
-		return err_code;
-}
-
-
-
 /**@brief Function for the application's SoftDevice event handler.
  *
  * @param[in] p_ble_evt SoftDevice event.
@@ -603,120 +430,120 @@ static uint32_t advertising_stop(void)
 static void on_ble_evt(ble_evt_t * p_ble_evt)
 {
     uint32_t err_code;
-		uint8_t nus_status;
+	uint8_t nus_status;
+	ble_gap_addr_t peerAddress;
 	
     switch (p_ble_evt->header.evt_id)
     {
-        case BLE_GAP_EVT_CONNECTED:
-						isAdvertising = false;
-            err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
-            APP_ERROR_CHECK(err_code);
-            m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
-						nrf_gpio_pin_write(18,1);				// Minew S1 v1.0 Red LED
-						//nrf_gpio_pin_write(18,1);			// Minew S1 v0.9 Red LED	
-						break; // BLE_GAP_EVT_CONNECTED
+		case BLE_GAP_EVT_SCAN_REQ_REPORT:			// On being scanned by a gateway device
+			peerAddress = p_ble_evt->evt.gap_evt.params.scan_req_report.peer_addr;
+			uint8_t rssiValue = p_ble_evt->evt.gap_evt.params.scan_req_report.rssi;
+			NRF_LOG_DEBUG("Advertisement Scanned by GW RSSI: %d\r\n",rssiValue);
+			advMode = dynamic_advertising_handler(advMode,DYNADV_EVT_GATEWAY_FOUND);
+			break;
 
-				case BLE_EVT_TX_COMPLETE:
-            // Send next key event						
-						NRF_LOG_INFO("\r\nTX Complete\r\n");
-            //nus_tx_flag_set();
-						nusRecKey++;
-						nus_status = check_nusRecKey(nusRecKey, nusCurrentKey);
-						if(nus_status == NUS_CONTINUE) payload_to_central_async(&m_nus, nusRecKey);
-						else if (nus_status == NUS_STOP)
-						{
-							err_code = nus_eom_send(&m_nus, NUS_MSGTYPE_EOM);
-								if (err_code != NRF_SUCCESS) { 
-									NRF_LOG_ERROR("Err sending eom package: %d\r\n", err_code);
-								}
-								else NRF_LOG_INFO("EOM sent \r\n");
-						}
-						break; // BLE_EVT_TX_COMPLETE
-				
-        case BLE_GAP_EVT_DISCONNECTED:
-            nrf_gpio_pin_write(18,0);				// Minew S1 v1.0 Red LED
-            //nrf_gpio_pin_write(18,0);			// Minew S1 v0.9 Red LED
-						syncType = SYNCTYPE_STRAIGHT;
-						err_code = advertising_start();
-						if (err_code !=NRF_SUCCESS) 
-						{
-							NRF_LOG_ERROR("Adv restart failed after disconnet errcode: %d\r\n",err_code);						
-						}
-						else  NRF_LOG_INFO("Adv restarted after disconnect\r\n\n"); 
-						m_conn_handle = BLE_CONN_HANDLE_INVALID;
-						break; // BLE_GAP_EVT_DISCONNECTED
+		case BLE_GAP_EVT_CONNECTED:
+			advMode = dynamic_advertising_handler(advMode,DYNADV_EVT_CONNECTED);
+			err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
+			APP_ERROR_CHECK(err_code);
+			m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+			nrf_gpio_pin_write(18,1);				// Minew S1 v1.0 Red LED
+			//nrf_gpio_pin_write(18,1);				// Minew S1 v0.9 Red LED
+			break; // BLE_GAP_EVT_CONNECTED
 
-        case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
-            // Pairing not supported
-            err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
-            APP_ERROR_CHECK(err_code);
-            break; // BLE_GAP_EVT_SEC_PARAMS_REQUEST
-
-        case BLE_GATTS_EVT_SYS_ATTR_MISSING:
-            // No system attributes have been stored.
-            err_code = sd_ble_gatts_sys_attr_set(m_conn_handle, NULL, 0, 0);
-            APP_ERROR_CHECK(err_code);
-            break; // BLE_GATTS_EVT_SYS_ATTR_MISSING
-
-        case BLE_GATTC_EVT_TIMEOUT:
-            // Disconnect on GATT Client timeout event.
-            err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
-                                             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-            APP_ERROR_CHECK(err_code);
-            break; // BLE_GATTC_EVT_TIMEOUT
-
-        case BLE_GATTS_EVT_TIMEOUT:
-            // Disconnect on GATT Server timeout event.
-            err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
-                                             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-            APP_ERROR_CHECK(err_code);
-            break; // BLE_GATTS_EVT_TIMEOUT
-
-        case BLE_EVT_USER_MEM_REQUEST:
-            err_code = sd_ble_user_mem_reply(p_ble_evt->evt.gattc_evt.conn_handle, NULL);
-            APP_ERROR_CHECK(err_code);
-            break; // BLE_EVT_USER_MEM_REQUEST
-
-        case BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST:
-        {
-            ble_gatts_evt_rw_authorize_request_t  req;
-            ble_gatts_rw_authorize_reply_params_t auth_reply;
-
-            req = p_ble_evt->evt.gatts_evt.params.authorize_request;
-
-            if (req.type != BLE_GATTS_AUTHORIZE_TYPE_INVALID)
-            {
-                if ((req.request.write.op == BLE_GATTS_OP_PREP_WRITE_REQ)     ||
-                    (req.request.write.op == BLE_GATTS_OP_EXEC_WRITE_REQ_NOW) ||
-                    (req.request.write.op == BLE_GATTS_OP_EXEC_WRITE_REQ_CANCEL))
-                {
-                    if (req.type == BLE_GATTS_AUTHORIZE_TYPE_WRITE)
-                    {
-                        auth_reply.type = BLE_GATTS_AUTHORIZE_TYPE_WRITE;
-                    }
-                    else
-                    {
-                        auth_reply.type = BLE_GATTS_AUTHORIZE_TYPE_READ;
-                    }
-                    auth_reply.params.write.gatt_status = APP_FEATURE_NOT_SUPPORTED;
-                    err_code = sd_ble_gatts_rw_authorize_reply(p_ble_evt->evt.gatts_evt.conn_handle,
-                                                               &auth_reply);
-                    APP_ERROR_CHECK(err_code);
-                }
-            }
-        } break; // BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST
-
-				case BLE_GATTS_EVT_WRITE:
-				{
-						uint8_t * pdata = p_ble_evt->evt.gatts_evt.params.write.data;
-						ble_uuid_t uuid = p_ble_evt->evt.gatts_evt.params.write.uuid;
-						SEGGER_RTT_printf(0, "\r\nChar value %d, uuid %04x\r\n", pdata[0], uuid.uuid);
-					//ble_tbs_get_advinterval(&m_tbs);
+		case BLE_EVT_TX_COMPLETE:					// Send next key event
+			NRF_LOG_INFO("\r\nTX Complete\r\n");
+			//nus_tx_flag_set();
+			nusRecKey++;
+			nus_status = check_nusRecKey(nusRecKey, nusCurrentKey);
+			if(nus_status == NUS_CONTINUE) payload_to_central_async(&m_nus, nusRecKey);
+			else if (nus_status == NUS_STOP)
+			{
+				err_code = nus_eom_send(&m_nus, NUS_MSGTYPE_EOM);
+				if (err_code != NRF_SUCCESS) {
+					NRF_LOG_ERROR("Err sending eom package: %d\r\n", err_code);
 				}
-						break;
-        default:
-            // No implementation needed.
-            break;
+				else NRF_LOG_INFO("EOM sent \r\n");
+			}
+			break; // BLE_EVT_TX_COMPLETE
+
+		case BLE_GAP_EVT_DISCONNECTED:
+			nrf_gpio_pin_write(18,0);				// Minew S1 v1.0 Red LED
+			//nrf_gpio_pin_write(18,0);			// Minew S1 v0.9 Red LED
+			syncType = SYNCTYPE_STRAIGHT;
+			nus_status = check_nusRecKey(nusRecKey, nusCurrentKey);
+			if (nus_status == NUS_CONTINUE) advMode = dynamic_advertising_handler(advMode, DYNADV_EVT_CONN_DROPPED);
+			else advMode = dynamic_advertising_handler(advMode, DYNADV_EVT_DATA_SYNCED);
+			m_conn_handle = BLE_CONN_HANDLE_INVALID;
+			break; // BLE_GAP_EVT_DISCONNECTED
+
+		case BLE_GAP_EVT_SEC_PARAMS_REQUEST:			// Pairing not supported
+			err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
+			APP_ERROR_CHECK(err_code);
+			break; // BLE_GAP_EVT_SEC_PARAMS_REQUEST
+
+		case BLE_GATTS_EVT_SYS_ATTR_MISSING:			// No system attributes have been stored.
+			err_code = sd_ble_gatts_sys_attr_set(m_conn_handle, NULL, 0, 0);
+			APP_ERROR_CHECK(err_code);
+			break; // BLE_GATTS_EVT_SYS_ATTR_MISSING
+
+		case BLE_GATTC_EVT_TIMEOUT:						// Disconnect on GATT Client timeout event.
+			err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
+										BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+			APP_ERROR_CHECK(err_code);
+			break; // BLE_GATTC_EVT_TIMEOUT
+
+		case BLE_GATTS_EVT_TIMEOUT:						// Disconnect on GATT Server timeout event.
+			err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
+										 BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+			APP_ERROR_CHECK(err_code);
+			break; // BLE_GATTS_EVT_TIMEOUT
+
+		case BLE_EVT_USER_MEM_REQUEST:
+			err_code = sd_ble_user_mem_reply(p_ble_evt->evt.gattc_evt.conn_handle, NULL);
+			APP_ERROR_CHECK(err_code);
+			break; // BLE_EVT_USER_MEM_REQUEST
+
+		case BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST:
+		{
+			ble_gatts_evt_rw_authorize_request_t  req;
+			ble_gatts_rw_authorize_reply_params_t auth_reply;
+
+			req = p_ble_evt->evt.gatts_evt.params.authorize_request;
+
+			if (req.type != BLE_GATTS_AUTHORIZE_TYPE_INVALID)
+			{
+				if ((req.request.write.op == BLE_GATTS_OP_PREP_WRITE_REQ)     ||
+					(req.request.write.op == BLE_GATTS_OP_EXEC_WRITE_REQ_NOW) ||
+					(req.request.write.op == BLE_GATTS_OP_EXEC_WRITE_REQ_CANCEL))
+				{
+					if (req.type == BLE_GATTS_AUTHORIZE_TYPE_WRITE)
+					{
+						auth_reply.type = BLE_GATTS_AUTHORIZE_TYPE_WRITE;
+					}
+					else
+					{
+						auth_reply.type = BLE_GATTS_AUTHORIZE_TYPE_READ;
+					}
+					auth_reply.params.write.gatt_status = APP_FEATURE_NOT_SUPPORTED;
+					err_code = sd_ble_gatts_rw_authorize_reply(p_ble_evt->evt.gatts_evt.conn_handle,
+															   &auth_reply);
+					APP_ERROR_CHECK(err_code);
+				}
+			}
+		}
+			break; // BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST
+		case BLE_GATTS_EVT_WRITE:
+		{
+			uint8_t * pdata = p_ble_evt->evt.gatts_evt.params.write.data;
+			ble_uuid_t uuid = p_ble_evt->evt.gatts_evt.params.write.uuid;
+			SEGGER_RTT_printf(0, "\r\nChar value %d, uuid %04x\r\n", pdata[0], uuid.uuid);
+			//ble_tbs_get_advinterval(&m_tbs);
+		}
+			break;
+		default:
+			// No implementation needed.
+			break;
     }
 }
 
@@ -729,7 +556,7 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 //   ble_db_discovery_on_ble_evt(&m_ble_db_discovery, p_ble_evt);
 	 ble_conn_params_on_ble_evt(p_ble_evt);
 	 ble_nus_on_ble_evt(&m_nus, p_ble_evt);
-	 ble_tbs_on_ble_evt(&m_tbs, p_ble_evt);
+//	 ble_tbs_on_ble_evt(&m_tbs, p_ble_evt);
 //   ble_ias_on_ble_evt(&m_ias, p_ble_evt);
 //   ble_lls_on_ble_evt(&m_lls, p_ble_evt);
 //   ble_bas_on_ble_evt(&m_bas, p_ble_evt);
@@ -762,6 +589,8 @@ static void ble_stack_init(void)
 {
     uint32_t err_code;
     nrf_clock_lf_cfg_t clock_lf_cfg = NRF_CLOCK_LFCLKSRC;
+		ble_opt_t ble_options;
+	
 	
     // Initialize the SoftDevice handler module.
     SOFTDEVICE_HANDLER_INIT(&clock_lf_cfg, NULL);
@@ -780,7 +609,11 @@ static void ble_stack_init(void)
     // Enable BLE stack.
     err_code = softdevice_enable(&ble_enable_params);
 		APP_ERROR_CHECK(err_code);
-
+		
+		// Enable scan response report
+		ble_options.gap_opt.scan_req_report.enable = 1;
+		err_code = sd_ble_opt_set(BLE_GAP_OPT_SCAN_REQ_REPORT, &ble_options);
+		APP_ERROR_CHECK(err_code);
 
     // Register with the SoftDevice handler module for BLE events.
     err_code = softdevice_ble_evt_handler_set(ble_evt_dispatch);
@@ -805,8 +638,7 @@ void bsp_event_handler(bsp_event_t event)
             sleep_mode_enter();
             break;
 				case BSP_EVENT_ADVERTISING_START:
-						if (!isAdvertising) advertising_start();
-						else advertising_stop();
+						advMode = dynamic_advertising_handler(advMode, DYNADV_EVT_BUTTON_PRESS);
 						break;
         case BSP_EVENT_DISCONNECT:
             err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
@@ -863,119 +695,110 @@ static void power_manage(void)
  */
 int main(void)
 {
-		uint32_t err_code = NRF_SUCCESS;
-		bsp_board_leds_init();		
-		nrf_delay_ms(2000); // To allow for bounce during battery insertion 
-		
-		// Initialize.
-		log_init();
-		NRF_LOG_INFO("Starting Logging\n");
-		NRF_LOG_INFO("\r\n\n\n\nInitializing ...\n");
+	uint32_t err_code = NRF_SUCCESS;
+	bsp_board_leds_init();
+	nrf_delay_ms(2000); // To allow for bounce during battery insertion
+	APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
 
-		APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, false);
-		err_code = bsp_init(BSP_INIT_LED, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER), NULL);
-		APP_ERROR_CHECK(err_code);
+	// Initialize.
+	log_init();
+	NRF_LOG_INFO("Starting Logging\n");
+	NRF_LOG_INFO("\r\n\n\n\nInitializing ...\n");
 
-		NRF_LOG_INFO("Initializing Timers \n");
-		timers_init();
-		NRF_LOG_INFO("Timers Initialized \n");
+	timers_init();
+	NRF_LOG_INFO("Timers Initialized \n");
 
-		err_code = buttons_leds_init(false);
-		if (err_code != NRF_SUCCESS) 
-		{
-			NRF_LOG_ERROR("BSP init error %d\r\n", err_code); 
-		}
-		else NRF_LOG_INFO("BSP Initialized \n");
-	
-	
-		ble_stack_init();	
-		gap_params_init();
-		NRF_LOG_INFO("ble stack Initialized \n");		
-			
-		adc_configure();
-		advertising_init();
-		NRF_LOG_INFO("Adv Initialized \n");
-		
-		err_code = services_init();
-		if (err_code != NRF_SUCCESS) NRF_LOG_ERROR("Services init error %d\r\n", err_code); 
-		//else NRF_LOG_INFO("Services Initialized \n");
-		
+	err_code = bsp_init(BSP_INIT_LED, APP_TIMER_TICKS(100, APP_TIMER_PRESCALER), NULL);
+	if(err_code == NRF_SUCCESS)	{	NRF_LOG_INFO("Initialized BSP \n");}
+	else NRF_LOG_ERROR("Error in initialzing BSP rc: %d\r\n", err_code);
 
-		conn_params_init();
-		NRF_LOG_INFO("Conn Params Initialized \n");
-		
-		err_code = twi_init(&twi);
-		NRF_LOG_INFO("SHT31's I2C Initialized \n");
+	err_code = buttons_leds_init(false);
+	if (err_code != NRF_SUCCESS)
+	{
+		NRF_LOG_ERROR("LEDs init error %d\r\n", err_code);
+	}
+	else NRF_LOG_INFO("LEDs Initialized \n");
 
-		// Wait for fds to be initialized before any read/write
-		err_code =fds_bledb_init();
-		if (err_code != NRF_SUCCESS) 
-		{
-			NRF_LOG_ERROR("fds init err: %d \n",err_code);
-		}
-		else NRF_LOG_INFO("fds initialized\r\n"); 
-		APP_ERROR_CHECK(err_code);
-		// POLL FOR INIT CALLBACK
-		wait_for_fds_evt(FDS_EVT_INIT);
+	ble_stack_init();
+	gap_params_init();
+	NRF_LOG_INFO("ble stack Initialized \n");
 		
-		
-		#ifdef INIT_DEVICE
+	adc_configure();
 
-		NRF_LOG_INFO("\r\n\n----Device Flash Init Begin----\n");
-		
-		err_code = fds_file_delete(FILE_ID);
-		NRF_LOG_ERROR("file del err: %d \n",err_code);
-		APP_ERROR_CHECK(err_code);				
-		NRF_LOG_RAW_INFO("\r\n\n");
-		// Wait for GC to complete on FILE
-		wait_for_fds_evt(FDS_EVT_GC);
-		
-		err_code = fds_file_delete(BACKUP_FILE_ID);
-		NRF_LOG_ERROR("file del err: %d \n",err_code);
-		APP_ERROR_CHECK(err_code);				
-		NRF_LOG_RAW_INFO("\r\n\n");
-		// Wait for GC to complete on FILE
-		wait_for_fds_evt(FDS_EVT_GC);
-		
+	//Initialize advMode to OFF
+	advMode = advertising_init();
+	NRF_LOG_INFO("Adv Initialized \n");
 
-		NRF_LOG_INFO("Writing data to LASTSEEN record:\r\n");
-		uint32_t testData[] = {(uint32_t)REC_KEY_START,0x00000000,0x00000000};
-		err_code = fds_write(BACKUP_FILE_ID, REC_KEY_LASTSEEN, testData, 3);
-		APP_ERROR_CHECK(err_code);
-		// Wait for write done event
-		wait_for_fds_evt(FDS_EVT_WRITE);
-		
-		NRF_LOG_RAW_INFO("----Device Flash Init Done----\r\n\n\n");
-		#endif
+	err_code = services_init();
+	if (err_code != NRF_SUCCESS) NRF_LOG_ERROR("Services init error %d\r\n", err_code);
+	//else NRF_LOG_INFO("Services Initialized \n");
 
-		nrf_delay_ms(1000);
-		
-		tstamp_reckey_init();		
+	conn_params_init();
+	NRF_LOG_INFO("Conn Params Initialized \n");
 
-		// Start execution.
-		nrf_delay_ms(1000);
-		timers_start();
-		NRF_LOG_INFO("Times Start.. \n");
+	err_code = twi_init(&twi);
+	NRF_LOG_INFO("SHT31's I2C Initialized \n");
 
-		err_code = advertising_start();
-		NRF_LOG_INFO("adv start err: %d \n",err_code);
-		APP_ERROR_CHECK(err_code);
-		NRF_LOG_INFO("Started Advertising \n");
-		
-		bsp_board_leds_on();
-		
+	// Wait for fds to be initialized before any read/write
+	err_code =fds_bledb_init();
+	if (err_code != NRF_SUCCESS)
+	{
+		NRF_LOG_ERROR("fds init err: %d \n",err_code);
+	}
+	else NRF_LOG_INFO("fds initialized\r\n");
+	APP_ERROR_CHECK(err_code);
+	// POLL FOR INIT CALLBACK
+	wait_for_fds_evt(FDS_EVT_INIT);
 
+#ifdef INIT_DEVICE
+
+	NRF_LOG_INFO("\r\n\n----Device Flash Init Begin----\n");
+
+	err_code = fds_file_delete(FILE_ID);
+	NRF_LOG_ERROR("file del err: %d \n",err_code);
+	APP_ERROR_CHECK(err_code);
+	NRF_LOG_RAW_INFO("\r\n\n");
+	// Wait for GC to complete on FILE
+	wait_for_fds_evt(FDS_EVT_GC);
+
+	err_code = fds_file_delete(BACKUP_FILE_ID);
+	NRF_LOG_ERROR("file del err: %d \n",err_code);
+	APP_ERROR_CHECK(err_code);
+	NRF_LOG_RAW_INFO("\r\n\n");
+	// Wait for GC to complete on FILE
+	wait_for_fds_evt(FDS_EVT_GC);
+
+
+	NRF_LOG_INFO("Writing data to LASTSEEN record:\r\n");
+	uint32_t testData[] = {(uint32_t)REC_KEY_START,0x00000000,0x00000000};
+	err_code = fds_write(BACKUP_FILE_ID, REC_KEY_LASTSEEN, testData, 3);
+	APP_ERROR_CHECK(err_code);
+	// Wait for write done event
+	wait_for_fds_evt(FDS_EVT_WRITE);
+
+	NRF_LOG_RAW_INFO("----Device Flash Init Done----\r\n\n\n");
+#endif
+
+	nrf_delay_ms(1000);
+	tstamp_reckey_init();
+
+	// Start execution.
+	nrf_delay_ms(1000);
+	timers_start();
+	NRF_LOG_INFO("Timers Start.. \n");
+
+	// Switch on advertising in SLOW connectable mode
+	advMode = dynamic_advertising_handler(advMode, DYNADV_EVT_BUTTON_PRESS);
+
+	bsp_board_leds_on();
+		
     // Enter main loop.
     for (;; )
     {
         if (NRF_LOG_PROCESS() == false)
         {
-            power_manage();
+        	app_sched_execute();
+        	power_manage();
         }
     }
 }
-
-
-/**
- * @}
- */

@@ -40,6 +40,7 @@ SRC_FILES += \
   $(PROJ_DIR)/sht31.c		 \
   $(PROJ_DIR)/battery_level.c		 \
   $(PROJ_DIR)/ble_tbs.c		 \
+  $(PROJ_DIR)/advertising.c		 \
   $(SDK_ROOT)/external/segger_rtt/RTT_Syscalls_GCC.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_printf.c \
@@ -54,6 +55,8 @@ SRC_FILES += \
   $(SDK_ROOT)/components/drivers_nrf/twi_master/nrf_drv_twi.c	\
   $(SDK_ROOT)/components/drivers_nrf/saadc/nrf_drv_saadc.c	\
   $(SDK_ROOT)/components/drivers_nrf/hal/nrf_saadc.c	\
+  $(SDK_ROOT)/components/libraries/scheduler/app_scheduler.c \
+  $(SDK_ROOT)/components/libraries/timer/app_timer_appsh.c	\
   
 # Include folders common to all targets
 INC_FOLDERS += \
@@ -164,6 +167,7 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/experimental_section_vars	\
   $(SDK_ROOT)/components/libraries/fifo	\
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT	\
+  $(SDK_ROOT)/components/libraries/scheduler	\
 
 # Libraries common to all targets
 LIB_FILES += \
@@ -190,13 +194,13 @@ CFLAGS += -DNRF52_PAN_55
 CFLAGS += -DS132
 CFLAGS += -mcpu=cortex-m4
 CFLAGS += -mthumb -mabi=aapcs
-CFLAGS +=  -Wall  -O3 -g3
+CFLAGS +=  -Wall  -O0 -g3
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 # keep every function in separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin --short-enums 
 CFLAGS += -DNRF_LOG_USES_RTT=1
-CFLAGS += -DINIT_DEVICE
+#CFLAGS += -DINIT_DEVICE
 
 # C++ flags common to all targets
 CXXFLAGS += \

@@ -133,7 +133,7 @@ void tbs_txpower_characteristic_update(ble_tbs_t *p_our_service, int32_t *temper
 // Unused
 uint8_t ble_tbs_get_advinterval(ble_tbs_t * p_tbs)
 {
-	uint32_t err_code = NRF_SUCCESS;
+	uint32_t err_code;
 
 	uint8_t data_buf;
 	ble_gatts_value_t gatts_buf;
