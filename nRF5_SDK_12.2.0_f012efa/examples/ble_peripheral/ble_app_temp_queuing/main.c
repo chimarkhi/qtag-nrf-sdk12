@@ -25,10 +25,9 @@
 #include <inttypes.h>
 #include "main.h"
 
-#define  NRF_LOG_MODULE_NAME 						"APP"
+#define  NRF_LOG_MODULE_NAME 			"APP"
 #include "nrf_log.h"
 #include "advertising.h"
-
 
 static ble_nus_t                        m_nus;                                      /**< Structure to identify the Nordic UART Service. */
 //static ble_tbs_t						m_tbs;																			/**< Structure to identify the TagBox Service. */
@@ -88,6 +87,11 @@ void tstamp_timer_timeout_handler(void * p_context)
 	++tstamp_sec;
 }
 
+uint32_t get_timeStamp(void)
+{
+	return tstamp_sec;
+}
+
 /**@brief Function for the tstamp and record key
  *
  * @details Initializes reckey and tstamp from last record key and timestamp stored in REC_KEY_LASTSEEN.
@@ -98,9 +102,9 @@ void tstamp_timer_timeout_handler(void * p_context)
 void tstamp_reckey_init()
 {
 		uint32_t data[] 	= {0,0,0};
-		uint16_t dataLen 	= sizeof(data);
+		uint8_t dataLen 	= sizeof(data);
 		uint32_t err_code;
-		err_code = fds_read(BACKUP_FILE_ID, REC_KEY_LASTSEEN, data, dataLen);
+		err_code = fds_read(BACKUP_FILE_ID, REC_KEY_LASTSEEN, data, &dataLen);
 		if (err_code != NRF_SUCCESS) NRF_LOG_ERROR("FDS read error %d", err_code);
 		
 		if ((data[0] <= (uint32_t)0xFFFF)
@@ -422,6 +426,22 @@ static void sleep_mode_enter(void)
     APP_ERROR_CHECK(err_code);
 }
 
+void sync_handler(void)
+{
+	uint8_t nus_status;
+	uint32_t err_code;
+	nusRecKey++;
+	nus_status = check_nusRecKey(nusRecKey, nusCurrentKey);
+	if(nus_status == NUS_CONTINUE) payload_to_central_async(&m_nus, nusRecKey);
+	else if (nus_status == NUS_STOP)
+	{
+		err_code = nus_eom_send(&m_nus, NUS_MSGTYPE_EOM);
+		if (err_code != NRF_SUCCESS) {
+			NRF_LOG_ERROR("Err sending eom package: %d\r\n", err_code);
+		}
+		else NRF_LOG_INFO("EOM sent \r\n");
+	}
+}
 
 /**@brief Function for the application's SoftDevice event handler.
  *
@@ -439,7 +459,11 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 			peerAddress = p_ble_evt->evt.gap_evt.params.scan_req_report.peer_addr;
 			uint8_t rssiValue = p_ble_evt->evt.gap_evt.params.scan_req_report.rssi;
 			NRF_LOG_DEBUG("Advertisement Scanned by GW RSSI: %d\r\n",rssiValue);
+			NRF_LOG_DEBUG("Advertisement Scanned by GW RSSI: %02x:%02x:%02x:%02x\r\n",
+						peerAddress.addr[0],peerAddress.addr[1],peerAddress.addr[4],peerAddress.addr[5]);
+//			if ((peerAddress.addr[0] == 0xDF) | (peerAddress.addr[0] == 0x5C)) {
 			advMode = dynamic_advertising_handler(advMode,DYNADV_EVT_GATEWAY_FOUND);
+//			}
 			break;
 
 		case BLE_GAP_EVT_CONNECTED:
@@ -453,18 +477,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 
 		case BLE_EVT_TX_COMPLETE:					// Send next key event
 			NRF_LOG_INFO("\r\nTX Complete\r\n");
-			//nus_tx_flag_set();
-			nusRecKey++;
-			nus_status = check_nusRecKey(nusRecKey, nusCurrentKey);
-			if(nus_status == NUS_CONTINUE) payload_to_central_async(&m_nus, nusRecKey);
-			else if (nus_status == NUS_STOP)
-			{
-				err_code = nus_eom_send(&m_nus, NUS_MSGTYPE_EOM);
-				if (err_code != NRF_SUCCESS) {
-					NRF_LOG_ERROR("Err sending eom package: %d\r\n", err_code);
-				}
-				else NRF_LOG_INFO("EOM sent \r\n");
-			}
+			sync_handler();
 			break; // BLE_EVT_TX_COMPLETE
 
 		case BLE_GAP_EVT_DISCONNECTED:

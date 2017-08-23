@@ -5,32 +5,37 @@
 #include "sdk_errors.h"
 #include "ble_nus.h"
 
-#define FILE_ID 									0x1111
-#define BACKUP_FILE_ID						0x1112
+#define FILE_ID 						0x1111
+#define BACKUP_FILE_ID					0x1112
 #define REC_KEY_START     				0x0001																	// Starting Record Key
-#define REC_KEY_MAX	     					REC_KEY_START + DATA_POINTS - 1 				// Maximum Record Key
+#define REC_KEY_MAX	     				REC_KEY_START + DATA_POINTS - 1 				// Maximum Record Key
 #define REC_KEY_LASTSEEN   				0xFFFE																	// Record Key where copy of latest data-point is stored
-#define REC_KEY_EOM								0xFFFF																	// Record Key with NUS end of message data
-#define DATA_POINTS								8192																		// Max data points the device can store
-#define FREQ_OF_RUN_GC						25																			// Run GC after every FREQ_OF_RUN_GC records are deleted
+#define REC_KEY_EOM						0xFFFF																	// Record Key with NUS end of message data
+#define DATA_POINTS						8192																		// Max data points the device can store
+#define FREQ_OF_RUN_GC					25																			// Run GC after every FREQ_OF_RUN_GC records are deleted
 #define WORDLEN_DATAPACKET				3
 
-#define BLEDB_ERROR_BASE					0
+#define BLEDB_ERROR_BASE				0
 
-#define BLEDB_SUCCESS 							(BLEDB_ERROR_BASE +0)
-#define BLEDB_ERROR_NO_RECORD_FOUND (BLEDB_ERROR_BASE +1)
+#define BLEDB_SUCCESS 					(BLEDB_ERROR_BASE +0)
+#define BLEDB_ERROR_NO_RECORD_FOUND		(BLEDB_ERROR_BASE +1)
 
-#define NUS_MSGTYPE_EOM						0
-#define NUS_MSGTYPE_DIRTYRECKEY		1
+#define NUS_MSGTYPE_EOM					0
+#define NUS_MSGTYPE_DIRTYRECKEY			1
 
-#define NUS_NOACTION							0
-#define NUS_CONTINUE							1
-#define NUS_STOP									2
+#define NUS_NOACTION					0
+#define NUS_CONTINUE					1
+#define NUS_STOP						2
 
-#define SYNCTYPE_STRAIGHT					0
-#define SYNCTYPE_ROLLOVER					1
-#define SYNCTYPE_INVALID					2
+#define SYNCTYPE_STRAIGHT				0
+#define SYNCTYPE_ROLLOVER				1
+#define SYNCTYPE_INVALID				2
 
+#ifdef CONCAT_NUS_DATA
+#define CONCAT_RATIO					3					// Max number of data-points in a single record
+#define CONCAT_DATA_LEN					(4+(2*CONCAT_RATIO)) 	// FDS data length in words
+#define CONCAT_TIMESTAMP_ERROR_MARGIN	5					// Max absolute error in timestamps allowed between data-points within 1 record
+#endif
 
 extern uint16_t nusRecKey;
 extern volatile bool initFlag;
@@ -44,7 +49,7 @@ void my_fds_evt_handler(fds_evt_t const * const p_fds_evt);
 
 ret_code_t fds_write(uint16_t fileID, uint16_t recKey, uint32_t data[], uint16_t dataLen);
 
-ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t dataLen);
+ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t* dataLen);
 
 ret_code_t fds_find_and_delete (uint16_t fileID, uint16_t recKey);
 	

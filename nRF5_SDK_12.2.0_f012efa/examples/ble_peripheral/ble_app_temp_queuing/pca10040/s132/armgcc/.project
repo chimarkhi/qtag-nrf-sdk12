@@ -51,7 +51,7 @@
 			<locationURI>PARENT-3-PROJECT_LOC/main.c</locationURI>
 		</link>
 		<link>
-			<name>Application/main.c</name>
+			<name>Application/sdk_config.h</name>
 			<type>1</type>
 			<locationURI>PARENT-3-PROJECT_LOC/sdk_config.h</locationURI>
 		</link>

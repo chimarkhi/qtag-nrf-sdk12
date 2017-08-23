@@ -194,12 +194,13 @@ CFLAGS += -DNRF52_PAN_55
 CFLAGS += -DS132
 CFLAGS += -mcpu=cortex-m4
 CFLAGS += -mthumb -mabi=aapcs
-CFLAGS +=  -Wall  -O0 -g3
+CFLAGS += -Wall -O0 -g3
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 # keep every function in separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin --short-enums 
 CFLAGS += -DNRF_LOG_USES_RTT=1
+CFLAGS += -DCONCAT_NUS_DATA
 #CFLAGS += -DINIT_DEVICE
 
 # C++ flags common to all targets
