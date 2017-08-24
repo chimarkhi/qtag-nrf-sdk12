@@ -46,7 +46,7 @@
 #define ADV_INTERVAL				    MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL			APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL					APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO	300								  /** Logging interval = log_adv_ratio*adv_interval **/
+#define LOGINTERVAL_ADVINTERVAL_RATIO	5								  /** Logging interval = log_adv_ratio*adv_interval **/
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */
@@ -69,6 +69,8 @@
 #define APP_TIMER_OP_QUEUE_SIZE         10		                                 /**< Size of timer operation queues. */
 
 #define ADV_BUTTON						0
+#define LED_PIN_ADV						19
+#define LED_PIN_CONNECTION				18
 
 #define SCHED_MAX_EVENT_DATA_SIZE       APP_TIMER_SCHED_EVT_SIZE
 #define SCHED_QUEUE_SIZE                20
@@ -86,6 +88,12 @@ uint32_t dynadv_timeout_timer_start(uint32_t timer_ticks);
 
 uint32_t dynadv_timeout_timer_stop(void);
 
+uint32_t dynadv_timer_start(uint32_t timer_ticks);
+
+uint32_t dynadv_timer_stop(void);
+
 uint32_t get_timeStamp(void);
 
 void sync_handler(void);
+
+void bsp_event_handler(bsp_event_t event);

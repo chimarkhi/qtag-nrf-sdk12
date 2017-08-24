@@ -51,7 +51,7 @@ volatile uint8_t syncType = SYNCTYPE_STRAIGHT;
 APP_TIMER_DEF(m_advdata_update_timer);
 APP_TIMER_DEF(m_dataToDB_timer);
 APP_TIMER_DEF(m_tstamp_timer);
-APP_TIMER_DEF(m_dynadv_timer_timer);
+APP_TIMER_DEF(m_dynadv_timeout_timer);
 
 /***@brief function for initializing nrf logging.
 */
@@ -201,7 +201,7 @@ static void timers_init(void)
     APP_ERROR_CHECK(err_code);	
 
 	//Create timer used in dynamic advertising for FAST_MODE and UNCONN_MODE timeouts
-	err_code = app_timer_create(&m_dynadv_timer_timer, APP_TIMER_MODE_SINGLE_SHOT, dynadv_timer_timeout_handler);
+	err_code = app_timer_create(&m_dynadv_timeout_timer, APP_TIMER_MODE_SINGLE_SHOT, dynadv_timer_timeout_handler);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -210,7 +210,7 @@ static void timers_init(void)
 */
 static void timers_start(void)
 {
-    uint32_t err_code = app_timer_start(m_advdata_update_timer, ADVDATA_UPDATE_INTERVAL, NULL);
+    uint32_t err_code = app_timer_start(m_advdata_update_timer, 5*ADVDATA_UPDATE_INTERVAL, NULL);
     APP_ERROR_CHECK(err_code);
 	
     err_code = app_timer_start(m_dataToDB_timer, LOGINTERVAL_ADVINTERVAL_RATIO*ADVDATA_UPDATE_INTERVAL, NULL);
@@ -223,7 +223,7 @@ static void timers_start(void)
 
 /**@brief Function for starting dynamic advertising timeout timers
 */
-uint32_t dynadv_timeout_timer_start(uint32_t timer_ticks)
+uint32_t dynadv_timer_start(uint32_t timer_ticks)
 {
     uint32_t err_code = app_timer_start(m_advdata_update_timer, timer_ticks, NULL);
     return err_code;
@@ -231,7 +231,7 @@ uint32_t dynadv_timeout_timer_start(uint32_t timer_ticks)
 
 /**@brief Function for starting dynamic advertising timeout timers
 */
-uint32_t dynadv_timeout_timer_stop(void)
+uint32_t dynadv_timer_stop(void)
 {
     uint32_t err_code = app_timer_stop(m_advdata_update_timer);
     return err_code;					// TBD error handling
@@ -246,18 +246,34 @@ uint32_t dynadv_timer_update(uint32_t timeout_ticks)
 {
 	uint32_t err_code = app_timer_stop(m_advdata_update_timer);
 	
-	if (err_code == NRF_SUCCESS)
+	// timer_stop will return invalid_state error when function is called from ADV_MODE_OFF
+	if ((err_code == NRF_SUCCESS) | (err_code == NRF_ERROR_INVALID_STATE))
 	{
 		err_code = app_timer_start(m_advdata_update_timer, timeout_ticks, NULL);
 		NRF_LOG_INFO("Timer restarted with NEW timeout value: %d\r\n", timeout_ticks);
 	}
-	else 
+	else
 	{
 		NRF_LOG_ERROR("Timer could not be restarted with new timeout value error: %d\r\n", timeout_ticks);
 	}
 	return err_code;
 }
 
+/**@brief Function for starting dynamic advertising timeout timers
+*/
+uint32_t dynadv_timeout_timer_start(uint32_t timer_ticks)
+{
+    uint32_t err_code = app_timer_start(m_dynadv_timeout_timer, timer_ticks, NULL);
+    return err_code;
+}
+
+/**@brief Function for starting dynamic advertising timeout timers
+*/
+uint32_t dynadv_timeout_timer_stop(void)
+{
+    uint32_t err_code = app_timer_stop(m_dynadv_timeout_timer);
+    return err_code;					// TBD error handling
+}
 
 static void gap_params_init(void)
 {
@@ -461,9 +477,9 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 			NRF_LOG_DEBUG("Advertisement Scanned by GW RSSI: %d\r\n",rssiValue);
 			NRF_LOG_DEBUG("Advertisement Scanned by GW RSSI: %02x:%02x:%02x:%02x\r\n",
 						peerAddress.addr[0],peerAddress.addr[1],peerAddress.addr[4],peerAddress.addr[5]);
-//			if ((peerAddress.addr[0] == 0xDF) | (peerAddress.addr[0] == 0x5C)) {
-			advMode = dynamic_advertising_handler(advMode,DYNADV_EVT_GATEWAY_FOUND);
-//			}
+			((peerAddress.addr[0] == 0xDF) | (peerAddress.addr[0] == 0x5C)) {
+				advMode = dynamic_advertising_handler(advMode,DYNADV_EVT_GATEWAY_FOUND);
+			}
 			break;
 
 		case BLE_GAP_EVT_CONNECTED:
@@ -471,7 +487,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 			err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
 			APP_ERROR_CHECK(err_code);
 			m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
-			nrf_gpio_pin_write(18,1);				// Minew S1 v1.0 Red LED
+			nrf_gpio_pin_write(LED_PIN_CONNECTION,1);				// Minew S1 v1.0 Red LED
 			//nrf_gpio_pin_write(18,1);				// Minew S1 v0.9 Red LED
 			break; // BLE_GAP_EVT_CONNECTED
 
@@ -481,7 +497,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 			break; // BLE_EVT_TX_COMPLETE
 
 		case BLE_GAP_EVT_DISCONNECTED:
-			nrf_gpio_pin_write(18,0);				// Minew S1 v1.0 Red LED
+			nrf_gpio_pin_write(LED_PIN_CONNECTION,0);				// Minew S1 v1.0 Red LED
 			//nrf_gpio_pin_write(18,0);			// Minew S1 v0.9 Red LED
 			syncType = SYNCTYPE_STRAIGHT;
 			nus_status = check_nusRecKey(nusRecKey, nusCurrentKey);
@@ -650,9 +666,9 @@ void bsp_event_handler(bsp_event_t event)
         case BSP_EVENT_SLEEP:
             sleep_mode_enter();
             break;
-				case BSP_EVENT_ADVERTISING_START:
-						advMode = dynamic_advertising_handler(advMode, DYNADV_EVT_BUTTON_PRESS);
-						break;
+		case BSP_EVENT_ADVERTISING_START:
+			advMode = dynamic_advertising_handler(advMode, DYNADV_EVT_BUTTON_PRESS);
+			break;
         case BSP_EVENT_DISCONNECT:
             err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             if (err_code != NRF_ERROR_INVALID_STATE)

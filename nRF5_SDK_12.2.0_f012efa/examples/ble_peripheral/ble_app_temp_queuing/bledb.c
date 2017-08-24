@@ -222,7 +222,7 @@ ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t* 
 			NRF_LOG_RAW_INFO("%08x ",dataTemp[i]);
 			data[i] = dataTemp[i];
 		}
-		dataLen = flash_record.p_header->tl.length_words;
+		*dataLen = flash_record.p_header->tl.length_words;
 		NRF_LOG_RAW_INFO("\r\n");
 		// Access the record through the flash_record structure.
 		// Close the record when done.
@@ -544,7 +544,7 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 {
 	uint32_t recKey ;
 	uint32_t data[] = {0,0,0};
-	uint16_t dataLen;
+	uint8_t dataLen;
 	ret_code_t ret = FDS_SUCCESS;
 
 	// Map inbound nusRecKey to a record in the DB

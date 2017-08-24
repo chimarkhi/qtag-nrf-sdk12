@@ -5,7 +5,7 @@
 #include "main.h"
 
 
-#define DYNADV_ADVRATE_MULTIPLE_SLOW				5			// Max adv rate is 10.24s
+#define DYNADV_ADVRATE_MULTIPLE_SLOW				10			// Max adv rate is 10.24s
 #define DYNADV_FAST_MODE_TIMEOUT					APP_TIMER_TICKS(60*1000, APP_TIMER_PRESCALER)
 #define DYNADV_SLOW_UNCONN_MODE_TIMEOUT				APP_TIMER_TICKS(180*1000, APP_TIMER_PRESCALER)
 
@@ -18,8 +18,10 @@ typedef enum
     DYNADV_ADV_MODE_FAST,                    			/** FAST frequency advertising mode */
 	DYNADV_ADV_MODE_SLOW,								/** Low frequency advertising mode */
 	DYNADV_ADV_MODE_SLOW_UNCONN,                    	/** Low frequency non-connectable advertising mode */
+	DYNADV_ADV_MODE_OFF_CONN,            	        	/** Low frequency non-connectable advertising mode */
 	DYNADV_NUMBER_OF_MODES								/** Count of Modes */
 } advertising_mode_t;
+
 
 #define DYNADV_CH_MASK  {0,0,0}							// Make 1 to switch off the 3 advertising channels
 
@@ -29,13 +31,16 @@ static ble_gap_adv_params_t m_dynadv_params[DYNADV_NUMBER_OF_MODES] =
 	{{BLE_GAP_ADV_TYPE_ADV_IND, NULL, BLE_GAP_ADV_FP_ANY, ADV_INTERVAL, APP_CFG_NON_CONN_ADV_TIMEOUT, DYNADV_CH_MASK}, 	//DYNADV_ADV_MODE_OFF
 	 {BLE_GAP_ADV_TYPE_ADV_IND, NULL, BLE_GAP_ADV_FP_ANY, ADV_INTERVAL, APP_CFG_NON_CONN_ADV_TIMEOUT, DYNADV_CH_MASK}, 	//DYNADV_ADV_MODE_FAST
 	 {BLE_GAP_ADV_TYPE_ADV_IND, NULL, BLE_GAP_ADV_FP_ANY, ADV_INTERVAL*DYNADV_ADVRATE_MULTIPLE_SLOW, APP_CFG_NON_CONN_ADV_TIMEOUT, DYNADV_CH_MASK}, 	//DYNADV_ADV_MODE_SLOW
-	 {BLE_GAP_ADV_TYPE_ADV_NONCONN_IND, NULL, BLE_GAP_ADV_FP_ANY, ADV_INTERVAL*DYNADV_ADVRATE_MULTIPLE_SLOW, APP_CFG_NON_CONN_ADV_TIMEOUT, DYNADV_CH_MASK}};	//DYNADV_ADV_MODE_SLOW_UNCONN
+	 {BLE_GAP_ADV_TYPE_ADV_NONCONN_IND, NULL, BLE_GAP_ADV_FP_ANY, ADV_INTERVAL*DYNADV_ADVRATE_MULTIPLE_SLOW, APP_CFG_NON_CONN_ADV_TIMEOUT, DYNADV_CH_MASK}, //DYNADV_ADV_MODE_SLOW_UNCONN
+	 {BLE_GAP_ADV_TYPE_ADV_NONCONN_IND, NULL, BLE_GAP_ADV_FP_ANY, ADV_INTERVAL, APP_CFG_NON_CONN_ADV_TIMEOUT, DYNADV_CH_MASK}};	// OFF Connected
 
 static uint8_t dynadv_flags[DYNADV_NUMBER_OF_MODES]	=
     {BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED,
      BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED,
 	 BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED,
-	 BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE};
+	 BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE,
+	 BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED};	//unsued, since it is for OFF Connected mode
+
 
 /**@brief Dynamic advertising scenarios
  * @note 
@@ -50,7 +55,6 @@ typedef enum
 	DYNADV_EVT_UNCONN_MODE_TIMEOUT,
 	DYNADV_EVT_CONNECTED
 } dynamic_advertising_event_t;
-
 
 
 /**@brief Function for initializing the Advertising functionality.
