@@ -46,21 +46,6 @@
 			<locationURI>virtual:/virtual</locationURI>
 		</link>
 		<link>
-			<name>Application/main.c</name>
-			<type>1</type>
-			<locationURI>PARENT-3-PROJECT_LOC/main.c</locationURI>
-		</link>
-		<link>
-			<name>Application/sdk_config.h</name>
-			<type>1</type>
-			<locationURI>PARENT-3-PROJECT_LOC/sdk_config.h</locationURI>
-		</link>
-		<link>
-			<name>Application/bledb.c</name>
-			<type>1</type>
-			<locationURI>PARENT-3-PROJECT_LOC/bledb.c</locationURI>
-		</link>
-		<link>
 			<name>Application/advertising.c</name>
 			<type>1</type>
 			<locationURI>PARENT-3-PROJECT_LOC/advertising.c</locationURI>
@@ -71,14 +56,29 @@
 			<locationURI>PARENT-3-PROJECT_LOC/battery_level.c</locationURI>
 		</link>
 		<link>
-			<name>Application/sht31.c</name>
-			<type>1</type>
-			<locationURI>PARENT-3-PROJECT_LOC/sht31.c</locationURI>
-		</link>
-		<link>
 			<name>Application/ble_tbs.c</name>
 			<type>1</type>
 			<locationURI>PARENT-3-PROJECT_LOC/ble_tbs.c</locationURI>
+		</link>
+		<link>
+			<name>Application/bledb.c</name>
+			<type>1</type>
+			<locationURI>PARENT-3-PROJECT_LOC/bledb.c</locationURI>
+		</link>
+		<link>
+			<name>Application/main.c</name>
+			<type>1</type>
+			<locationURI>PARENT-3-PROJECT_LOC/main.c</locationURI>
+		</link>
+		<link>
+			<name>Application/sdk_config.h</name>
+			<type>1</type>
+			<location>C:/Workshop/Nordic/nRF5_SDK_12.2.0_f012efa/examples/ble_peripheral/ble_app_temp_queuing/pca10040/s132/config/sdk_config.h</location>
+		</link>
+		<link>
+			<name>Application/sht31.c</name>
+			<type>1</type>
+			<locationURI>PARENT-3-PROJECT_LOC/sht31.c</locationURI>
 		</link>
 		<link>
 			<name>Device/gcc_startup_nrf51.S</name>

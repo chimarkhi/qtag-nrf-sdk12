@@ -70,7 +70,7 @@ switch (p_fds_evt->id)
 												fileID, recKey, recID, recCounter);
 
 			// if data saved successfully, update the last seen reckey and tstamp in flash
-			if ((recKey != REC_KEY_LASTSEEN) & (recKey != REC_KEY_EOM))
+			if ((recKey != REC_KEY_LASTSEEN) && (recKey != REC_KEY_EOM))
 			{
 				fds_read(fileID, recKey, data, &dataLen);
 				++recCounter;
@@ -99,7 +99,7 @@ switch (p_fds_evt->id)
 		NRF_LOG_DEBUG("Deleted record ID: %d, result: %d \r\n",p_fds_evt->del.record_id, p_fds_evt->result);
 		if (p_fds_evt->result == FDS_SUCCESS)
 		{
-			if ((p_fds_evt->del.record_id % FREQ_OF_RUN_GC < 2) &
+			if ((p_fds_evt->del.record_id % FREQ_OF_RUN_GC < 2) &&
 					(p_fds_evt->del.record_key != REC_KEY_LASTSEEN ))
 			{
 				NRF_LOG_INFO("Scheduled GC being run\r\n");
@@ -174,7 +174,7 @@ ret_code_t save_lastseen(uint16_t fileID, uint16_t recKey)
 			return err_code;
 		}
 
-		NRF_LOG_INFO("Data read back from file,rec,recID [%04x,%04x,%d] = ",
+		NRF_LOG_DEBUG("Data read back from file,rec,recID [%04x,%04x,%d] = ",
 												fileID, recKey, record_desc.record_id);
 		dataTemp = (uint32_t *) flash_record.p_data;
 
@@ -214,7 +214,7 @@ ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t* 
 			return err_code;
 		}
 		
-		NRF_LOG_INFO("Data read back from file,rec,recID [%04x,%04x,%d] = ",
+		NRF_LOG_DEBUG("Data read back from file,rec,recID [%04x,%04x,%d] = ",
 												fileID, recKey, record_desc.record_id);
 		dataTemp = (uint32_t *) flash_record.p_data;
 		for (uint8_t i=0;i<flash_record.p_header->tl.length_words;i++)
@@ -231,6 +231,7 @@ ret_code_t fds_read(uint16_t fileID, uint16_t recKey, uint32_t data[], uint8_t* 
 		{
 			return err_code;
 		}
+		break;				// Stop at the first found record and return
 	}
 	return NRF_SUCCESS;
 }
@@ -293,7 +294,6 @@ ret_code_t fds_cleanup(uint32_t fileID)
 #ifdef CONCAT_NUS_DATA
 static bool concat_nus_datapacket(uint32_t * data, uint16_t dataLen)
 {
-
 	if (concatCounter == 0) memset(&concatData,0xFFFF,sizeof(concatData));
 	uint32_t concatDeltaTnew = data[1] - concatLastTimeStamp;
 	uint16_t timeStamp_temp[2] 	= {(uint16_t)data[1],(uint16_t)(data[1]>>16)};
@@ -343,9 +343,24 @@ static bool concat_nus_datapacket(uint32_t * data, uint16_t dataLen)
 	}
 
 	concatLastTimeStamp = data[1];
+
 	if (concatCounter == 0) return true;
 	else return false;
 }
+
+static void nus_concatData_send(ble_nus_t * p_nus){
+	uint8_t *p_dataPacket = (uint8_t *)concatData;
+	uint32_t ret = ble_nus_string_send(p_nus, p_dataPacket, CONCAT_DATA_LEN*2);
+	if (ret == FDS_SUCCESS) {
+		for (uint8_t i=0;i<CONCAT_DATA_LEN*2;i++) {
+			NRF_LOG_RAW_INFO("%02x",*p_dataPacket++);
+		}
+		NRF_LOG_RAW_INFO("\r\n");
+	}
+	else NRF_LOG_ERROR("nus_data_send error: %d",ret);
+
+}
+
 #endif
 
 
@@ -388,7 +403,7 @@ ret_code_t dataToDB (uint16_t fileID, uint16_t recKey, uint32_t * data, uint16_t
 	return NRF_SUCCESS;
 }
 
-uint8_t check_startRecKey(uint16_t inRecKey, uint16_t currentRecKey)
+sync_type_t check_startRecKey(uint16_t inRecKey, uint16_t currentRecKey)
 {
 	nusRecKey = inRecKey;
 	if (inRecKey == (uint16_t)FDS_RECORD_KEY_DIRTY)	return SYNCTYPE_INVALID;
@@ -415,7 +430,7 @@ uint8_t check_startRecKey(uint16_t inRecKey, uint16_t currentRecKey)
 }
 
 
-uint8_t check_nusRecKey(uint16_t inRecKey, uint16_t currentRecKey)
+uint8_t check_nusRecKey(uint16_t inRecKey, uint16_t currentRecKey, sync_type_t syncType)
 {
 	switch(syncType)
 	{
@@ -424,7 +439,7 @@ uint8_t check_nusRecKey(uint16_t inRecKey, uint16_t currentRecKey)
 			else if(nusRecKey == currentRecKey) return NUS_STOP;
 				else return NUS_NOACTION;
 		case SYNCTYPE_ROLLOVER:
-			if ((nusRecKey > currentRecKey) & (nusRecKey < 0xFFFF-DATA_POINTS+currentRecKey)) return NUS_NOACTION;
+			if ((nusRecKey > currentRecKey) && (nusRecKey < 0xFFFF-DATA_POINTS+currentRecKey)) return NUS_NOACTION;
 			else if (nusRecKey == currentRecKey) return NUS_STOP;
 				else return NUS_CONTINUE;
 		case SYNCTYPE_INVALID:
@@ -436,6 +451,8 @@ uint8_t check_nusRecKey(uint16_t inRecKey, uint16_t currentRecKey)
 }
 
 
+
+
 ret_code_t nus_dataPacket_send(ble_nus_t * p_nus, uint32_t data[], uint8_t dataLen)
 {
 	uint32_t ret = NRF_SUCCESS;
@@ -444,16 +461,8 @@ ret_code_t nus_dataPacket_send(ble_nus_t * p_nus, uint32_t data[], uint8_t dataL
 
 	bool sendData = false;
 	sendData = concat_nus_datapacket(data, dataLen);
-	uint8_t *p_dataPacket = (uint8_t *)concatData;
 	if (sendData){
-		ret = ble_nus_string_send(p_nus, p_dataPacket, CONCAT_DATA_LEN*2);
-		if (ret == FDS_SUCCESS) {
-			for (uint8_t i=0;i<CONCAT_DATA_LEN*2;i++) {
-				NRF_LOG_RAW_INFO("%02x",*p_dataPacket++);
-			}
-			NRF_LOG_RAW_INFO("\r\n");
-		}
-		else NRF_LOG_ERROR("nus_data_send error: %d",ret);
+		nus_concatData_send(p_nus);
 	}
 	else sync_handler();
 
@@ -493,6 +502,7 @@ ret_code_t nus_eom_send(ble_nus_t * p_nus, uint8_t eomType)
 #ifdef CONCAT_NUS_DATA
 	uint32_t data[] = {0xFFFFFFFF,0xFFFFFFFF,0xFFFFFFFF,0xFFFFFFFF,0xFFFFFFFF};
 	uint8_t dataLengthInBytes = CONCAT_DATA_LEN*2;
+	if (concatCounter != 0) nus_concatData_send(p_nus);
 
 #else
 	uint32_t data[] = {0,0xFFFFFFFF,0xFFFFFFFF};
@@ -503,12 +513,10 @@ ret_code_t nus_eom_send(ble_nus_t * p_nus, uint8_t eomType)
 				data[0] 	= 0xFFFFFFFF;
 				break;
 		case NUS_MSGTYPE_DIRTYRECKEY:
-				//data[0]	= FDS_RECORD_KEY_DIRTY;
-
 				data[0]		= 0xFFFFFFFF;
 				break;
 		default:
-				data[0] = 0xFFFFFFFF;
+				data[0] 	= 0xFFFFFFFF;
 				break;
 	}
 
@@ -571,7 +579,10 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 				break;
 		}
 	}
-	else ret = nus_dataPacket_send(p_nus,&data[0],dataLen);
+	else	{
+		NRF_LOG_DEBUG("Before nus_send\r\n");		//throughput opt
+		ret = nus_dataPacket_send(p_nus, &data[0], dataLen);
+	}
 	return ret;
 }
 
@@ -586,12 +597,12 @@ void wait_for_fds_evt(fds_evt_id_t id)
 
         case FDS_EVT_WRITE:
             while(!writeFlag) __WFE;
-				initFlag = false;
+				writeFlag = false;
             break;
 
 		case FDS_EVT_GC:
             while(!gcDone) __WFE;
-				initFlag = false;
+				gcDone = false;
             break;
 						
         default:

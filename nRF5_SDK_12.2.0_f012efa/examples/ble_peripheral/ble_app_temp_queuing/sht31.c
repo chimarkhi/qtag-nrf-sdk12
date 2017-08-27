@@ -55,7 +55,7 @@ uint32_t twi_init (nrf_drv_twi_t * p_twi)
        .interrupt_priority = APP_IRQ_PRIORITY_HIGH
     };
     
-    //err_code = nrf_drv_twi_init(p_twi, p_twi, twi_handler, NULL);
+    //err_code = nrf_drv_twi_init(p_twi, &twi_config, twi_handler, NULL);
     err_code = nrf_drv_twi_init(p_twi, &twi_config, NULL, NULL);
     if (err_code != NRF_SUCCESS){
 			NRF_LOG_ERROR("Err in I2C init: %d",err_code);
@@ -68,7 +68,7 @@ uint32_t twi_init (nrf_drv_twi_t * p_twi)
 /**
  * @brief Retrieve temp/humid data through i2c bus
  */
-uint32_t get_temp_humid(nrf_drv_twi_t * p_twi)
+uint32_t get_temp_humid(nrf_drv_twi_t * p_twi, uint16_t * p_temp, uint8_t * p_humid)
 	{
 		nrf_drv_twi_enable(p_twi);
 		
@@ -78,16 +78,16 @@ uint32_t get_temp_humid(nrf_drv_twi_t * p_twi)
 
 		
 		err_code = nrf_drv_twi_tx(p_twi, SLAVE_ADDRESS, config_sht, sizeof(config_sht), true);
-    if (err_code != NRF_SUCCESS){
+		if (err_code != NRF_SUCCESS){
 			NRF_LOG_ERROR("I2C tx err: %d\r\n",err_code);
 			return err_code;
 		}
 			
 		err_code = nrf_drv_twi_rx(p_twi, SLAVE_ADDRESS, rx_data, sizeof(rx_data));
 		//APP_ERROR_CHECK(err_code);
-    if (err_code != NRF_SUCCESS){
+		if (err_code != NRF_SUCCESS){
 			NRF_LOG_ERROR("I2C rx err: %d\r\n",err_code);
-			return I2C_READ_ERROR;
+			return err_code;
 		}
 		
 		nrf_drv_twi_disable(p_twi);
@@ -97,9 +97,15 @@ uint32_t get_temp_humid(nrf_drv_twi_t * p_twi)
 //		}
 //		NRF_LOG_DEBUG("\r\n");
 		
-		int16_t temp = (((rx_data[0] * 256) + rx_data[1])) / 3.74  - 4500;
-		uint16_t humid = (((rx_data[3] * 256) + rx_data[4])) / 655;
+		*p_temp = (((rx_data[0] * 256) + rx_data[1])) / 3.74  - 4500;
+		*p_humid = (uint8_t)(((rx_data[3] * 256) + rx_data[4])) / 655;
 		
-		return (temp<<16|humid);
+		if (validate_sht31_data)	return NRF_SUCCESS;
+		else return SHT31_ERROR_INVALID_DATA;
 }
-	
+
+bool validate_sht31_data(void)
+{
+	return true;
+}
+

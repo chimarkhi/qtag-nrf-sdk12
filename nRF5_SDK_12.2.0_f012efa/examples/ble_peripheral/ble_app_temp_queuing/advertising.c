@@ -1,5 +1,6 @@
 #define  NRF_LOG_MODULE_NAME 		"ADVERTISING"
 #include "nrf_log.h"
+#include "bledb.h"
 
 #include "advertising.h"
 
@@ -60,7 +61,7 @@ void advdata_update(advertising_mode_t advMode)
 
 	uint16_t dataPacket[2*WORDLEN_DATAPACKET] = {APP_COMPANY_IDENTIFIER, recKey,
 												 timeStamp[0], timeStamp[1],
-												 temp,  			 (humid<<8)|batt_level};
+												 temp,  (humid<<8)|batt_level};
 
 	service_data[0].service_uuid = DATAPACKET_UUID;
     service_data[0].data.size    = 4*WORDLEN_DATAPACKET;
@@ -97,7 +98,8 @@ static uint32_t advertising_start(advertising_mode_t* p_advMode, advertising_mod
 
 	m_adv_params = m_dynadv_params[advModeNew];
 
-	if ((*p_advMode == DYNADV_ADV_MODE_OFF) | (*p_advMode == DYNADV_ADV_MODE_OFF_CONN)){
+	if ((*p_advMode == DYNADV_ADV_MODE_OFF) || (*p_advMode == DYNADV_ADV_MODE_OFF_CONN)){
+		advdata_update(advModeNew);						// Adv Flags need to be set properly before starting adv
 		err_code = sd_ble_gap_adv_start(&m_adv_params);
 	}
 	else return NRF_ERROR_INVALID_STATE;
@@ -108,7 +110,10 @@ static uint32_t advertising_start(advertising_mode_t* p_advMode, advertising_mod
 															(m_dynadv_params[DYNADV_ADV_MODE_FAST].interval));
 		err_code = dynadv_timer_start(timer_ticks_new);
 		*p_advMode = advModeNew;
-		NRF_LOG_INFO("Advertising Started in advMode: %d\r\n", advModeNew);
+		if(err_code == NRF_SUCCESS) {
+			NRF_LOG_DEBUG("Advertising Started in advMode: %d\r\n", advModeNew);
+		}
+		else NRF_LOG_WARNING("Advdata_update timer failed to start\r\n", advModeNew);
 	}
 	return err_code;
 }
@@ -118,7 +123,7 @@ static uint32_t advertising_start(advertising_mode_t* p_advMode, advertising_mod
 static uint32_t advertising_stop(advertising_mode_t* p_advMode)
 {
     uint32_t err_code;
-	if(( *p_advMode != DYNADV_ADV_MODE_OFF) | (*p_advMode != DYNADV_ADV_MODE_OFF_CONN))
+	if(( *p_advMode != DYNADV_ADV_MODE_OFF) || (*p_advMode != DYNADV_ADV_MODE_OFF_CONN))
 	{
 		err_code = sd_ble_gap_adv_stop();
 	}
@@ -129,9 +134,12 @@ static uint32_t advertising_stop(advertising_mode_t* p_advMode)
 	}
 	if (err_code == NRF_SUCCESS)
 	{
-		*p_advMode = DYNADV_ADV_MODE_OFF;
-		NRF_LOG_INFO("Advertising stopped\r\n");
-		err_code = dynadv_timer_stop();
+		err_code = dynadv_timer_stop();	// stop dynadv timer
+		if (err_code == NRF_SUCCESS)	{
+			*p_advMode = DYNADV_ADV_MODE_OFF;
+			NRF_LOG_DEBUG("Advertising stopped\r\n");
+		}
+		else NRF_LOG_ERROR("Error stopping timer");
 	}
 	return err_code;
 }
@@ -147,18 +155,15 @@ static uint32_t advertising_update_advInterval(advertising_mode_t* p_advMode, ad
 	}
 	else return err_code;
 
-	if (err_code == NRF_SUCCESS) {
-		*p_advMode = advModeNew;
-		NRF_LOG_INFO("Advertising rate update to Mode : %d\r\n", advModeNew);
-	}
-	else NRF_LOG_INFO("Advertising stopped for Mode : %d\r\n", advModeNew);
+	if (err_code == NRF_SUCCESS) 	*p_advMode = advModeNew;
+	else NRF_LOG_ERROR("Advertising update failed. Not advertising", advModeNew);
 	return err_code;
 }
 
 
 void indicate_advertising(advertising_mode_t advMode)
 {
-	if ((advMode != DYNADV_ADV_MODE_OFF) | (advMode != DYNADV_ADV_MODE_OFF_CONN))
+	if ((advMode != DYNADV_ADV_MODE_OFF) && (advMode != DYNADV_ADV_MODE_OFF_CONN))
 	{
 		// Turn on LED to indicate advertising
 		nrf_gpio_pin_write(LED_PIN_ADV,1); // Minew S1 v1.0 green LED
@@ -188,6 +193,14 @@ advertising_mode_t dynamic_advertising_handler(advertising_mode_t advMode, dynam
 				}
 				else NRF_LOG_ERROR("Failed to start Advertising at button-press, error:%d\r\n", err_code);
 			}
+			else if (advEvent == DYNADV_EVT_ADV_TIMEOUT){
+            	dynadv_timer_stop();				// timer stopped; will be restarted by handler
+				err_code = advertising_start(&advMode, DYNADV_ADV_MODE_SLOW);
+				if (err_code == NRF_SUCCESS) {
+					NRF_LOG_INFO("Started advertising after timeout in mode SLOW CONNECTABLE\r\n");
+				}
+				else NRF_LOG_ERROR("Failed to start Advertising after timeout, error:%d\r\n", err_code);
+			}
 			return advMode;
 
 		case DYNADV_ADV_MODE_SLOW:
@@ -198,11 +211,15 @@ advertising_mode_t dynamic_advertising_handler(advertising_mode_t advMode, dynam
 				}
 				else NRF_LOG_ERROR("Failed to stop Advertising @ BUTTON_PRESS , error:%d\r\n", err_code);
 			}
+			else if (advEvent == DYNADV_EVT_CONNECTED)	{
+				advMode = DYNADV_ADV_MODE_OFF_CONN;
+				dynadv_timer_stop();
+				NRF_LOG_INFO("Connected to Client, Advertising mode : %d\r\n",advMode);
+			}
 			else if (advEvent == DYNADV_EVT_GATEWAY_FOUND) {
 				err_code = advertising_update_advInterval(&advMode, DYNADV_ADV_MODE_FAST);
 				if (err_code == NRF_SUCCESS) {
 					NRF_LOG_INFO("Started Fast Advertising @ GW FOUND \r\n");
-					dynadv_timeout_timer_start(DYNADV_FAST_MODE_TIMEOUT);	// Start a timer to timeout the Fast Adv Mode
 				}
 				else NRF_LOG_ERROR("Failed to execute FAST ADV @ GW FOUND, error:%d\r\n", err_code);
 			}
@@ -210,7 +227,6 @@ advertising_mode_t dynamic_advertising_handler(advertising_mode_t advMode, dynam
 
 		case DYNADV_ADV_MODE_FAST:
 			if (advEvent == DYNADV_EVT_BUTTON_PRESS)	{
-				err_code = dynadv_timeout_timer_stop();
 				err_code = advertising_stop(&advMode);
 				if (err_code == NRF_SUCCESS) {
 					NRF_LOG_INFO("Stopped advertising @ BUTTON_PRESS in mode FAST CONNECTABLE\r\n");
@@ -218,16 +234,9 @@ advertising_mode_t dynamic_advertising_handler(advertising_mode_t advMode, dynam
 				else NRF_LOG_ERROR("Failed to stop Advertising @ BUTTON_PRESS , error:%d\r\n", err_code);
 			}
 			else if (advEvent == DYNADV_EVT_CONNECTED)	{
-				err_code = dynadv_timeout_timer_stop();
-				advMode = DYNADV_ADV_MODE_OFF;
+				advMode = DYNADV_ADV_MODE_OFF_CONN;
+				dynadv_timer_stop();
 				NRF_LOG_INFO("Connected to Client, Advertising stopped\r\n");
-			}
-			else if (advEvent == DYNADV_EVT_FAST_MODE_TIMEOUT)	{
-				err_code = advertising_update_advInterval(&advMode, DYNADV_ADV_MODE_SLOW);
-				if (err_code == NRF_SUCCESS) {
-					NRF_LOG_INFO("Changed to Slow Adv @ FAST ADV TIMEOUT\r\n");
-				}
-				else NRF_LOG_ERROR("Failed to execute Slow Adv @ FAST ADV TIMEOUT, error:%d\r\n", err_code);
 			}
 			return advMode;
 				
@@ -239,8 +248,7 @@ advertising_mode_t dynamic_advertising_handler(advertising_mode_t advMode, dynam
 			else if (advEvent == DYNADV_EVT_DATA_SYNCED){
 				err_code = advertising_start(&advMode, DYNADV_ADV_MODE_SLOW_UNCONN);
 				if (err_code == NRF_SUCCESS) {
-					NRF_LOG_INFO("Adv started in  SLOW UN-CONN @ DATA SYNCED\r\n");
-					dynadv_timeout_timer_start(DYNADV_SLOW_UNCONN_MODE_TIMEOUT);	// Start a timer to timeout the Unconnectable Adv Mode
+					NRF_LOG_INFO("Adv started in SLOW UN-CONN @ DATA SYNCED\r\n");
 				}
 				else NRF_LOG_ERROR("Failed to start advertising @ DATA SYNCED, error:%d\r\n", err_code);
 			}
@@ -251,23 +259,22 @@ advertising_mode_t dynamic_advertising_handler(advertising_mode_t advMode, dynam
 				}
 				else NRF_LOG_ERROR("Connection dropped MID-SYNC, Error in restarting Advertising: %d\r\n", err_code);
 			}
+			else if (advEvent == DYNADV_EVT_CONN_DROP_INVALIDGW){
+				err_code = advertising_start(&advMode, DYNADV_ADV_MODE_SLOW);
+				if (err_code == NRF_SUCCESS) {
+					NRF_LOG_INFO("Connection dropped without Sync start, Restarted Slow advertising\r\n");
+				}
+				else NRF_LOG_ERROR("Connection dropped without Sync start, Error in restarting Advertising: %d\r\n", err_code);
+			}
 			return advMode;
 
 		case DYNADV_ADV_MODE_SLOW_UNCONN:
 			if (advEvent == DYNADV_EVT_BUTTON_PRESS)	{
-				err_code = dynadv_timeout_timer_stop();
 				err_code = advertising_stop(&advMode);
 				if (err_code == NRF_SUCCESS) {
 					NRF_LOG_INFO("Stopped advertising @ BUTTON_PRESS in SLOW UNCONNECTABLE\r\n");
 				}
 				else NRF_LOG_ERROR("Failed to stop Advertising @ BUTTON_PRESS , error:%d\r\n", err_code);
-			}
-			else if (advEvent == DYNADV_EVT_UNCONN_MODE_TIMEOUT){
-				err_code = advertising_update_advInterval(&advMode, DYNADV_ADV_MODE_SLOW);
-				if (err_code == NRF_SUCCESS) {
-					NRF_LOG_INFO("Changed to Slow Adv @ SLOW UNCONN TIMEOUT\r\n");
-				}
-				else NRF_LOG_ERROR("Failed to execute Slow Adv @ SLOW UNCONN TIMEOUT, error:%d\r\n", err_code);
 			}
 			return advMode;
 
