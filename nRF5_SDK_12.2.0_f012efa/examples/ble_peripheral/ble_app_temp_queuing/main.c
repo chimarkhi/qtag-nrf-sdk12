@@ -109,25 +109,26 @@ void tstamp_reckey_init()
 		NRF_LOG_INFO("Starting from RECKEY,tstamp: [%04x,%08x]\r\n",(uint16_t)data[0],tstamp_sec);
 }
 
-uint32_t get_telemetry_data(uint16_t* temp, uint8_t* humid, uint8_t* batt_level, uint32_t* timeStamp, uint16_t* recKey)
+uint32_t get_telemetry_data(uint16_t* p_temp, uint8_t* p_humid, uint8_t* p_batt_level,
+								uint32_t* p_timeStamp, uint16_t* p_recKey)
 {
 		uint32_t err_code = NRF_SUCCESS;
 		
 		#ifdef NRF51
-			*temp	= 47;
-			*humid 	= 47;
-			*batt_level 	= 74;
+			*p_temp	= 47;
+			*p_humid 	= 47;
+			*p_batt_level 	= 74;
 		#else	
-			err_code 	= get_temp_humid(&twi, temp, humid);
-			*batt_level = get_battery_level();
+			err_code 	= get_temp_humid(&twi, p_temp, p_humid);
+			*p_batt_level = get_battery_level();
 		#endif
 	
  		if (err_code != NRF_SUCCESS)	return err_code;
 		
 		// Add logic to do data sanity checks on temperature, humidity and battery
 		
-		*timeStamp = tstamp_sec;
-		*recKey = get_recKey();
+		*p_timeStamp = tstamp_sec;
+		*p_recKey = get_recKey();
 		
 		return NRF_SUCCESS;
 }
@@ -446,13 +447,14 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
     switch (p_ble_evt->header.evt_id)
     {
 		case BLE_GAP_EVT_SCAN_REQ_REPORT:			// On being scanned by a gateway device
-			peerAddress = p_ble_evt->evt.gap_evt.params.scan_req_report.peer_addr;
-			uint8_t rssiValue = p_ble_evt->evt.gap_evt.params.scan_req_report.rssi;
-			NRF_LOG_DEBUG("Advertisement Scanned by GW: %02x:%02x, at RSSI: \r\n",
-						peerAddress.addr[4],peerAddress.addr[5], rssiValue);
-//			if((peerAddress.addr[0] == 0xDF) || (peerAddress.addr[0] == 0x5C)) {
+			if((peerAddress.addr[0] == 0x5C) || (peerAddress.addr[0] == 0x00)) {
+				peerAddress = p_ble_evt->evt.gap_evt.params.scan_req_report.peer_addr;
+				uint8_t rssiValue = p_ble_evt->evt.gap_evt.params.scan_req_report.rssi;
+				NRF_LOG_DEBUG("Advertisement Scanned by GW: %02x:%02x, at RSSI: \r\n",
+							peerAddress.addr[4],peerAddress.addr[5], rssiValue);
+
 				advMode = dynamic_advertising_handler(advMode,DYNADV_EVT_GATEWAY_FOUND);
-//			}
+			}
 			break;
 
 		case BLE_GAP_EVT_CONNECTED:
@@ -490,7 +492,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         case BLE_GAP_EVT_TIMEOUT:
             if (p_ble_evt->evt.gap_evt.params.timeout.src == BLE_GAP_TIMEOUT_SRC_ADVERTISING)
             {
-               	NRF_LOG_DEBUG("Advertising Timeout/r/n");
+               	NRF_LOG_DEBUG("Advertising Timeout\r\n");
             	advMode = DYNADV_ADV_MODE_OFF;
             	advMode = dynamic_advertising_handler(advMode, DYNADV_EVT_ADV_TIMEOUT);
             }

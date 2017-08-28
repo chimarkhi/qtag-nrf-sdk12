@@ -40,11 +40,11 @@
 #define PERIPHERAL_LINK_COUNT           1                                 /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
 #define TSTAMP_INTERVAL_IN_MS			1000
-#define ADV_INTERVAL_IN_MS				1000
+#define ADV_INTERVAL_IN_MS				2000
 #define ADV_INTERVAL				    MSEC_TO_UNITS(ADV_INTERVAL_IN_MS, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 #define ADVDATA_UPDATE_INTERVAL			APP_TIMER_TICKS(ADV_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
 #define TSTAMP_INTERVAL					APP_TIMER_TICKS(TSTAMP_INTERVAL_IN_MS, APP_TIMER_PRESCALER)
-#define LOGINTERVAL_ADVINTERVAL_RATIO	15								  /** Logging interval = log_adv_ratio*adv_interval **/
+#define LOGINTERVAL_ADVINTERVAL_RATIO	5								  /** Logging interval = log_adv_ratio*adv_interval **/
 
 #define APP_BEACON_INFO_LENGTH          0x02                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x00                              /**< Length of manufacturer specific data in the advertisement. */

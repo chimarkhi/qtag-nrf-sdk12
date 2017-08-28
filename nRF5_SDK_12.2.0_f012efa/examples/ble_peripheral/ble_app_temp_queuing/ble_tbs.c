@@ -65,7 +65,7 @@ static uint32_t tbs_char_add(ble_tbs_t * p_tbs, uint16_t char_uuid16, uint8_t ch
     ble_gatts_attr_t    attr_char_value;
     memset(&attr_char_value, 0, sizeof(attr_char_value));
     attr_char_value.p_uuid      = &char_uuid;
-		attr_char_value.p_attr_md   = &attr_md;
+	attr_char_value.p_attr_md   = &attr_md;
 
     // Set characteristic length in number of bytes
 		attr_char_value.max_len     	= 1;

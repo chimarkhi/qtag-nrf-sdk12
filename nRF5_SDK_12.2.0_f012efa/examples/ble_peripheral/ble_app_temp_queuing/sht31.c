@@ -98,8 +98,10 @@ uint32_t get_temp_humid(nrf_drv_twi_t * p_twi, uint16_t * p_temp, uint8_t * p_hu
 //		NRF_LOG_DEBUG("\r\n");
 		
 		*p_temp = (((rx_data[0] * 256) + rx_data[1])) / 3.74  - 4500;
-		*p_humid = (uint8_t)(((rx_data[3] * 256) + rx_data[4])) / 655;
-		
+
+		uint16_t humid_16b = (((rx_data[3] * 256) + rx_data[4])) / 655;
+		*p_humid  = (uint8_t)humid_16b;
+
 		if (validate_sht31_data)	return NRF_SUCCESS;
 		else return SHT31_ERROR_INVALID_DATA;
 }

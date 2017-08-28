@@ -10,7 +10,7 @@
 #include "nrf_delay.h"
 #include "ble_nus.h"
 #include "main.h"
-#define  NRF_LOG_MODULE_NAME 						"BLEDB"
+#define  NRF_LOG_MODULE_NAME 			"BLEDB"
 #include "nrf_log.h"
 
 volatile uint8_t nus_tx_complete = 0;
