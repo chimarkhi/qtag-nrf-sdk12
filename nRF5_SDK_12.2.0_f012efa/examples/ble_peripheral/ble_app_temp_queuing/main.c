@@ -49,6 +49,7 @@ volatile bool writeFlag = false;
 sync_type_t syncType = SYNCTYPE_STRAIGHT;
 bool isNUSClient = false;
 
+#define NRF_POWER->RESET =1;
 
 APP_TIMER_DEF(m_advdata_update_timer);
 APP_TIMER_DEF(m_dataToDB_timer);
@@ -706,8 +707,10 @@ int main(void)
 	ble_stack_init();
 	gap_params_init();
 	NRF_LOG_INFO("ble stack Initialized \n");
-		
+
+#ifndef ADC_PRESENT
 	adc_configure();
+#endif
 
 	//Initialize advMode to OFF
 	advMode = advertising_init();

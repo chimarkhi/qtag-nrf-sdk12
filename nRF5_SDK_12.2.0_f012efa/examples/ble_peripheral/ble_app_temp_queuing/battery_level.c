@@ -215,7 +215,9 @@ uint8_t get_battery_level(void)
 {
 		uint8_t percentage_batt_lvl = 0;
 		uint32_t err_code;
-
+#ifdef NRF51
+		return percentage_batt_lvl = 50;
+#else
 		nrf_saadc_value_t	batt_soc;
 		err_code = nrf_drv_saadc_sample_convert(0,&batt_soc);
 
@@ -231,4 +233,5 @@ uint8_t get_battery_level(void)
 			percentage_batt_lvl = battery_level_in_percent_fr03(batt_lvl_in_milli_volts);
 		}
 		return percentage_batt_lvl;
+#endif
 }

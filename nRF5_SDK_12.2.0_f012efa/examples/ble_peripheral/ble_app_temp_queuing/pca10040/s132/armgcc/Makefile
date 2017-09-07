@@ -269,5 +269,10 @@ flash_softdevice:
 	nrfjprog --program $(SDK_ROOT)/components/softdevice/s132/hex/s132_nrf52_3.0.0_softdevice.hex -f nrf52 --sectorerase 
 	nrfjprog --reset -f nrf52
 
+reset:
+	nrfjprog --pinreset -f nrf52
+
+
 erase:
 	nrfjprog --eraseall -f nrf52
+
