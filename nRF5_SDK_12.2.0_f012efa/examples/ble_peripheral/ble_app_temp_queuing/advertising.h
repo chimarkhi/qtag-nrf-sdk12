@@ -5,10 +5,10 @@
 #include "main.h"
 
 
-#define DYNADV_ADVRATE_MULTIPLE_SLOW				5			// Max adv rate is 10.24s
+#define DYNADV_ADVRATE_MULTIPLE_SLOW				4			// Max adv rate is 10.24s
 #define DEFUALT_ADV_TIMEOUT							0
-#define DYNADV_FAST_MODE_TIMEOUT					45
-#define DYNADV_SLOW_UNCONN_MODE_TIMEOUT				90
+#define DYNADV_FAST_MODE_TIMEOUT					60
+#define DYNADV_SLOW_UNCONN_MODE_TIMEOUT				1800
 
 /**@brief Advertising modes
  * @note 

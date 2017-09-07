@@ -65,7 +65,9 @@ void log_init(void)
 void advdata_update_timer_timeout_handler(void * p_context)
 {
 	advdata_update(advMode);
+#ifndef BB_DEVICE
 	indicate_advertising(advMode);
+#endif
 }
 
 void tstamp_timer_timeout_handler(void * p_context)
@@ -109,15 +111,29 @@ void tstamp_reckey_init()
 		NRF_LOG_INFO("Starting from RECKEY,tstamp: [%04x,%08x]\r\n",(uint16_t)data[0],tstamp_sec);
 }
 
+/**@brief Function to get internal temperature of IC. Used for calibration */
+static uint32_t get_internal_temp(void)
+{
+    int32_t temp;
+    uint32_t err_code;
+
+    err_code = sd_temp_get(&temp);
+    //NRF_LOG_ERROR("Internal temp get error : %d",err_code);
+
+    temp = temp*25; // -200 for Minew_Tag16 and 07; -425 for Minew_tag13;
+    int8_t exponent = -2;
+    return ((exponent & 0xFF) << 24) | (temp & 0x00FFFFFF);
+}
+
 uint32_t get_telemetry_data(uint16_t* p_temp, uint8_t* p_humid, uint8_t* p_batt_level,
 								uint32_t* p_timeStamp, uint16_t* p_recKey)
 {
 		uint32_t err_code = NRF_SUCCESS;
 		
-		#ifdef NRF51
-			*p_temp	= 47;
+		#ifdef BB_DEVICE
+			*p_temp	= get_internal_temp();
 			*p_humid 	= 47;
-			*p_batt_level 	= 74;
+			*p_batt_level = get_battery_level();
 		#else	
 			err_code 	= get_temp_humid(&twi, p_temp, p_humid);
 			*p_batt_level = get_battery_level();
@@ -447,14 +463,14 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
     switch (p_ble_evt->header.evt_id)
     {
 		case BLE_GAP_EVT_SCAN_REQ_REPORT:			// On being scanned by a gateway device
-			if((peerAddress.addr[0] == 0x5C) || (peerAddress.addr[0] == 0x00)) {
+//			if((peerAddress.addr[0] == 0x5C) || (peerAddress.addr[0] == 0x00)) {
 				peerAddress = p_ble_evt->evt.gap_evt.params.scan_req_report.peer_addr;
 				uint8_t rssiValue = p_ble_evt->evt.gap_evt.params.scan_req_report.rssi;
 				NRF_LOG_DEBUG("Advertisement Scanned by GW: %02x:%02x, at RSSI: \r\n",
 							peerAddress.addr[4],peerAddress.addr[5], rssiValue);
 
 				advMode = dynamic_advertising_handler(advMode,DYNADV_EVT_GATEWAY_FOUND);
-			}
+//			}
 			break;
 
 		case BLE_GAP_EVT_CONNECTED:
@@ -601,6 +617,7 @@ static void ble_stack_init(void)
 void bsp_event_handler(bsp_event_t event)
 {
     uint32_t err_code;
+    NRF_LOG_DEBUG("\r\nIn bsp event handler, event : %d\r\n", event);
     switch (event)
     {
         case BSP_EVENT_SLEEP:
@@ -611,20 +628,6 @@ void bsp_event_handler(bsp_event_t event)
 			break;
         case BSP_EVENT_DISCONNECT:
             err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-            if (err_code != NRF_ERROR_INVALID_STATE)
-            {
-                APP_ERROR_CHECK(err_code);
-            }
-            break;
-        case BSP_EVENT_WHITELIST_OFF:
-            if (m_conn_handle == BLE_CONN_HANDLE_INVALID)
-            {
-                err_code = ble_advertising_restart_without_whitelist();
-                if (err_code != NRF_ERROR_INVALID_STATE)
-                {
-                    APP_ERROR_CHECK(err_code);
-                }
-            }
             break;
         default:
             break;
@@ -666,7 +669,19 @@ int main(void)
 {
 	uint32_t err_code = NRF_SUCCESS;
 	bsp_board_leds_init();
-	nrf_delay_ms(2000); // To allow for bounce during battery insertion
+#ifdef BB_DEVICE
+	uint8_t i =0;
+	for (i=13; i<18; i++){
+	    nrf_gpio_cfg(
+	        i,
+	        NRF_GPIO_PIN_DIR_INPUT,
+	        NRF_GPIO_PIN_INPUT_DISCONNECT,
+	        NRF_GPIO_PIN_NOPULL,
+	        NRF_GPIO_PIN_S0S1,
+	        NRF_GPIO_PIN_NOSENSE);;
+	}
+#endif
+	nrf_delay_ms(500); // To allow for bounce during battery insertion
 	APP_SCHED_INIT(SCHED_MAX_EVENT_DATA_SIZE, SCHED_QUEUE_SIZE);
 
 	// Initialize.
@@ -710,12 +725,7 @@ int main(void)
 
 	// Wait for fds to be initialized before any read/write
 	err_code =fds_bledb_init();
-	if (err_code != NRF_SUCCESS)
-	{
-		NRF_LOG_ERROR("fds init err: %d \n",err_code);
-	}
-	else NRF_LOG_INFO("fds initialized\r\n");
-	APP_ERROR_CHECK(err_code);
+	//APP_ERROR_CHECK(err_code);
 	// POLL FOR INIT CALLBACK
 	wait_for_fds_evt(FDS_EVT_INIT);
 

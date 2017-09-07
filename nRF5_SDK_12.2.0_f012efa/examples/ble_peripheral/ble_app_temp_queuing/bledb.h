@@ -30,7 +30,7 @@
 #ifdef CONCAT_NUS_DATA
 #define CONCAT_RATIO					3					// Max number of data-points in a single record
 #define CONCAT_DATA_LEN					(4+(2*CONCAT_RATIO)) 	// FDS data length in words
-#define CONCAT_TIMESTAMP_ERROR_MARGIN	5					// Max absolute error in timestamps allowed between data-points within 1 record
+#define CONCAT_TIMESTAMP_ERROR_MARGIN	2					// Max absolute error in timestamps allowed between data-points within 1 record
 #endif
 
 /**@brief Type of reckey scroll while transferring data over nus

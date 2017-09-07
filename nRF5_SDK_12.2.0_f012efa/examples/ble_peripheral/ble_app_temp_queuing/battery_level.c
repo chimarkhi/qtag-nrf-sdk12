@@ -34,31 +34,74 @@ static uint8_t battery_level_in_percent_fr03(const uint16_t mvolts)
 {
     uint8_t battery_level;
 
-    if (mvolts >= 3400)
-    {
-        battery_level = 100;
-    }
-    else if (mvolts > 2900)
-    {
-        battery_level = 100 - ((3000 - mvolts) * 58) / 100;
-    }
-    else if (mvolts > 2740)
-    {
-        battery_level = 42 - ((2900 - mvolts) * 24) / 160;
-    }
-    else if (mvolts > 2440)
-    {
-        battery_level = 18 - ((2740 - mvolts) * 12) / 300;
-    }
-    else if (mvolts > 2100)
-    {
-        battery_level = 6 - ((2440 - mvolts) * 6) / 340;
-    }
-    else
-    {
-        battery_level = 0;
-    }
+    if (mvolts >= 3000)
+	 {
+		 battery_level = 100;
+	 }
+	 else if (mvolts> 2800)
+	 {
+		 battery_level = 100 - ((3000 - mvolts) * 42.5) / 100;
+	 }
+	 else if (mvolts> 2500)
+	 {
+		 battery_level = 15 - ((2800 - mvolts) * 3.315) / 100;
+	 }
+	 else
+	 {
+		 battery_level = 0;
+	 }
+    return battery_level;
+}
 
+
+/** @brief Function for converting the input voltage (in milli volts) into percentage of 3.0 Volts.
+ *
+ *  @details The calculation is based on a linearized version of the battery's discharge
+ *           curve. 3.0V returns 100% battery level. The limit for power failure is 2.1V and
+ *           is considered to be the lower boundary.
+ *
+ *           The discharge curve for CR2032 is non-linear. In this model it is split into
+ *           4 linear sections:
+ *           - Section 1: 3.0V - 2.9V = 100% - 42% (58% drop on 100 mV)
+ *           - Section 2: 2.9V - 2.74V = 42% - 18% (24% drop on 160 mV)
+ *           - Section 3: 2.74V - 2.44V = 18% - 6% (12% drop on 300 mV)
+ *           - Section 4: 2.44V - 2.1V = 6% - 0% (6% drop on 340 mV)
+ *
+ *           These numbers are by no means accurate. Temperature and
+ *           load in the actual application is not accounted for!
+ *
+ *  @param[in] mvolts The voltage in mV
+ *
+ *  @return    Battery level in percent.
+*/
+static uint8_t battery_level_in_percent_cr2032(const uint16_t mvolts)
+{
+    uint8_t battery_level;
+
+    if (mvolts >= 3000)
+	 {
+		 battery_level = 100;
+	 }
+	 else if (mvolts> 2900)
+	 {
+		 battery_level = 100 - ((3000 - mvolts) * 58) / 100;
+	 }
+	 else if (mvolts> 2740)
+	 {
+		 battery_level = 42 - ((2900 - mvolts) * 24) / 160;
+	 }
+	 else if (mvolts> 2440)
+	 {
+		 battery_level = 18 - ((2740 - mvolts) * 12) / 300;
+	 }
+	 else if (mvolts> 2100)
+	 {
+		 battery_level = 6 - ((2440 - mvolts) * 6) / 340;
+	 }
+	 else
+	 {
+		 battery_level = 0;
+	 }
     return battery_level;
 }
 
@@ -106,30 +149,34 @@ void adc_event_handler(nrf_drv_adc_evt_t const * p_event)
  */
 void saadc_event_handler(nrf_drv_saadc_evt_t const * p_event)
 {
-    if (p_event->type == NRF_DRV_SAADC_EVT_DONE)
+	if (p_event->type == NRF_DRV_SAADC_EVT_DONE)
     {
-        nrf_saadc_value_t adc_result;
-        uint16_t          batt_lvl_in_milli_volts;
-        uint8_t           percentage_batt_lvl;
-        uint32_t          err_code;
+		nrf_saadc_value_t adc_result;
+		uint16_t          batt_lvl_in_milli_volts;
+		uint8_t           percentage_batt_lvl;
+		uint32_t          err_code;
 
-        adc_result = p_event->data.done.p_buffer[0];
+		adc_result = p_event->data.done.p_buffer[0];
 
-        err_code = nrf_drv_saadc_buffer_convert(p_event->data.done.p_buffer, 1);
+		err_code = nrf_drv_saadc_buffer_convert(p_event->data.done.p_buffer, 1);
+#ifndef BB_DEVICE
+		batt_lvl_in_milli_volts = ADC_RESULT_IN_MILLI_VOLTS(adc_result) +
+								  DIODE_FWD_VOLT_DROP_MILLIVOLTS;
+		percentage_batt_lvl = battery_level_in_percent_fr03(batt_lvl_in_milli_volts);
+#else
+		batt_lvl_in_milli_volts = 3*(ADC_RESULT_IN_MILLI_VOLTS(adc_result) +
+								  DIODE_FWD_VOLT_DROP_MILLIVOLTS);
+		percentage_batt_lvl = battery_level_in_percent_cr2032(batt_lvl_in_milli_volts);
+#endif
 
-        batt_lvl_in_milli_volts = ADC_RESULT_IN_MILLI_VOLTS(adc_result) +
-                                  DIODE_FWD_VOLT_DROP_MILLIVOLTS;
-        percentage_batt_lvl = battery_level_in_percent_fr03(batt_lvl_in_milli_volts);
-        
-				if (err_code != NRF_SUCCESS)
-				{
-					NRF_LOG_ERROR("Battery level conversion failed\r\n");
-				}
-				else
-				{
-					NRF_LOG_DEBUG("Battery level (from callback): %d\r\n",percentage_batt_lvl);
-				}
-			
+		if (err_code != NRF_SUCCESS)
+		{
+			NRF_LOG_ERROR("Battery level conversion failed\r\n");
+		}
+		else
+		{
+			NRF_LOG_DEBUG("Battery level (from callback): %d\r\n",percentage_batt_lvl);
+		}
     }
 }
 
@@ -154,8 +201,7 @@ void adc_configure(void)
     #else //  SAADC_PRESENT
     ret_code_t err_code = nrf_drv_saadc_init(NULL, saadc_event_handler);
     APP_ERROR_CHECK(err_code);
-    nrf_saadc_channel_config_t config =
-        NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_VDD);
+    nrf_saadc_channel_config_t config =  NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_VDD);
     err_code = nrf_drv_saadc_channel_init(0, &config);
     APP_ERROR_CHECK(err_code);
 //    err_code = nrf_drv_saadc_buffer_convert(&adc_buf[0], 1);
@@ -167,16 +213,12 @@ void adc_configure(void)
 
 uint8_t get_battery_level(void)
 {
-		uint8_t percentage_batt_lvl;
+		uint8_t percentage_batt_lvl = 0;
 		uint32_t err_code;
 
-		#ifdef ADC_PRESENT 
-		percentage_batt_lvl = 47;
-	
-		#else
-		nrf_saadc_value_t			batt_soc;	
-    err_code = nrf_drv_saadc_sample_convert(0,&batt_soc);
-	
+		nrf_saadc_value_t	batt_soc;
+		err_code = nrf_drv_saadc_sample_convert(0,&batt_soc);
+
 		if (err_code != NRF_SUCCESS)
 		{
 			percentage_batt_lvl = ADC_CONVERT_ERROR;
@@ -188,6 +230,5 @@ uint8_t get_battery_level(void)
                                   DIODE_FWD_VOLT_DROP_MILLIVOLTS;
 			percentage_batt_lvl = battery_level_in_percent_fr03(batt_lvl_in_milli_volts);
 		}
-		#endif
 		return percentage_batt_lvl;
 }

@@ -123,7 +123,7 @@ static uint32_t advertising_start(advertising_mode_t* p_advMode, advertising_mod
 static uint32_t advertising_stop(advertising_mode_t* p_advMode)
 {
     uint32_t err_code;
-	if(( *p_advMode != DYNADV_ADV_MODE_OFF) || (*p_advMode != DYNADV_ADV_MODE_OFF_CONN))
+	if(( *p_advMode != DYNADV_ADV_MODE_OFF) && (*p_advMode != DYNADV_ADV_MODE_OFF_CONN))
 	{
 		err_code = sd_ble_gap_adv_stop();
 	}

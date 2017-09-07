@@ -20,10 +20,11 @@ uint32_t recCounter;
 #ifdef CONCAT_NUS_DATA
 /**Keeps track of number of telemetry data points in each record.
    Reset to 0 when it reaches CONCAT_RATIO or when device restarts (stored in RAM) */
-uint16_t concatCounter;
+uint16_t concatCounter = 0;
 uint32_t concatDeltaT;
 uint32_t concatLastTimeStamp;
 uint16_t concatData[CONCAT_DATA_LEN];
+uint16_t concatDataTemp[CONCAT_DATA_LEN];
 #endif
 
 
@@ -292,60 +293,148 @@ ret_code_t fds_cleanup(uint32_t fileID)
 }
 
 #ifdef CONCAT_NUS_DATA
+
+// Function to concat 3 data points into a single 20byte packet.
+// Returns true if the packet is ready to be sent through NUS
 static bool concat_nus_datapacket(uint32_t * data, uint16_t dataLen)
 {
-	if (concatCounter == 0) memset(&concatData,0xFFFF,sizeof(concatData));
+	// Start from previously left residue (or all 1s)
+	memcpy(concatData,concatDataTemp,sizeof(concatData));
+
 	uint32_t concatDeltaTnew = data[1] - concatLastTimeStamp;
 	uint16_t timeStamp_temp[2] 	= {(uint16_t)data[1],(uint16_t)(data[1]>>16)};
 	uint16_t data_temp[2]	 	= {(uint16_t)data[2],(uint16_t)(data[2]>>16)};
-	concatData[0]	= (uint16_t)data[0];			//record key
-	concatData[1]	= timeStamp_temp[0];			//time stamp LSB
-	concatData[2]	= timeStamp_temp[1];			//time stamp MSB
+	concatLastTimeStamp = data[1];
 
+	// Depending on concatenation stage, assign data and deltaT values
 	switch(concatCounter)
 	{
-		case 0:										// never record data on first concatenated record; Update D0
-			concatData[3] = 0;		// deltaT
+		case 0:				// never record deltaT on first concatenated record; Update D0
+			concatData[0]	= (uint16_t)data[0];			// record key (RK0)
+			concatData[1]	= timeStamp_temp[0];			// time stamp LSB (Ts0)
+			concatData[2]	= timeStamp_temp[1];			// time stamp MSB (Ts0)
+			concatData[3]	= 0;							// deltaT
 			concatData[4+2*concatCounter] = data_temp[0];	// D0 Humid+Batt
 			concatData[5+2*concatCounter] = data_temp[1];	// D0 Temperature
 			concatCounter++;
+			memcpy(concatDataTemp,concatData,sizeof(concatData));	// Save residue
+			return false;									// Don't send
 			break;
 		case 1:
 			concatDeltaT = concatDeltaTnew;
-			if (concatDeltaT < 0x0000FFFF)
+			if (data[0]|data[1]|data[2])	{			// If data isn't from an unwritten flash record
+				if ((concatDeltaT < 0x0000FFFF) || (concatData[0] != 0))
+				// Add to current packet and increment counter
+				// Residue made same as current packet to continue concatenation
+				{
+					concatData[0]	= (uint16_t)data[0];			// record key (RK1)
+					concatData[1]	= timeStamp_temp[0];			// time stamp LSB (Ts1)
+					concatData[2]	= timeStamp_temp[1];			// time stamp MSB (Ts1)
+					concatData[3] 	= (uint16_t)concatDeltaT;
+					concatData[4+2*concatCounter] = data_temp[0];
+					concatData[5+2*concatCounter] = data_temp[1];
+					concatCounter++;
+					memcpy(concatDataTemp,concatData,sizeof(concatData));	// Save residue
+					return false;
+				}
+				else	{
+				// Send without adding current rec to packet
+				// Save current packet as RK0,TS0,D0.. to residue
+				// For next packet, start from counter=1 and use residue as D0
+					memset(&concatDataTemp,0xFFFF,sizeof(concatDataTemp));	// Reset residue
+					concatDataTemp[0]	= (uint16_t)data[0];
+					concatDataTemp[1]	= timeStamp_temp[0];
+					concatDataTemp[2]	= timeStamp_temp[1];
+					concatDataTemp[3] 	= 0;
+					concatDataTemp[4]	= data_temp[0];
+					concatDataTemp[5]	= data_temp[1];
+					return true;										// ready to send
+				}
+			}
+			else	{
+				// Add to current packet and increment counter
+				// Residue made same as current packet to continue concatenation
+				if (concatData[0] == 0)	{
+					concatData[4+2*concatCounter] = data_temp[0];
+					concatData[5+2*concatCounter] = data_temp[1];
+					concatCounter++;
+					memcpy(concatDataTemp,concatData,sizeof(concatData));	// Save residue
+					return false;											// dont send packet yet
+				}
+				else {
+					// Send without adding current rec to packet
+					// Save current packet as RK0,TS0,D0.. to residue
+					// For next packet, start from counter=1 and use residue as D0
+					memset(&concatDataTemp,0xFFFF,sizeof(concatDataTemp));	// Reset residue
+					concatDataTemp[0]	= (uint16_t)data[0];
+					concatDataTemp[1]	= timeStamp_temp[0];
+					concatDataTemp[2]	= timeStamp_temp[1];
+					concatDataTemp[3] 	= 0;
+					concatDataTemp[4] = data_temp[0];
+					concatDataTemp[5] = data_temp[1];
+					return true;										// ready to send
+				}
+			}
+			break;
+		case CONCAT_RATIO-1:						// Always return true (send data) from this step
+		if (data[0]|data[1]|data[2])	{			// If data isn't from unwritten flash record
+			if ((abs(concatDeltaTnew - concatDeltaT) < CONCAT_TIMESTAMP_ERROR_MARGIN) ||
+					(concatData[0] !=0))
+				// Add to current packet
+				// Residue reset to all 1s and reset counter to 0
 			{
+				concatData[0]	= (uint16_t)data[0];			// record key (RK2)
+				concatData[1]	= timeStamp_temp[0];			// time stamp LSB (Ts2)
+				concatData[2]	= timeStamp_temp[1];			// time stamp MSB (Ts2)
 				concatData[3] = (uint16_t)concatDeltaT;
 				concatData[4+2*concatCounter] = data_temp[0];
 				concatData[5+2*concatCounter] = data_temp[1];
-				concatCounter++;
+				memset(&concatDataTemp,0xFFFF,sizeof(concatDataTemp));	// Reset residue
+				concatCounter = 0;
 			}
-			else concatCounter = 0;
-			break;
-		default:
-			if (abs(concatDeltaTnew - concatDeltaT) < CONCAT_TIMESTAMP_ERROR_MARGIN)
-			{
-				concatData[3] = (uint16_t)concatDeltaT;
+			else	{
+				// Send without adding current rec to packet. But make D2 all 0s
+				// Save current packet as RK0,TS0,D0.. to residue
+				// For next packet, start from counter=1 and use residue as D0
+				concatData[4+2*concatCounter] = 0;
+				concatData[5+2*concatCounter] = 0;
+				memset(&concatDataTemp,0xFFFF,sizeof(concatDataTemp));	// Reset residue
+				concatDataTemp[0]	= (uint16_t)data[0];
+				concatDataTemp[1]	= timeStamp_temp[0];
+				concatDataTemp[2]	= timeStamp_temp[1];
+				concatDataTemp[3] 	= 0;
+				concatDataTemp[4]	= data_temp[0];
+				concatDataTemp[5]	= data_temp[1];
+				concatCounter = 1;
+			}
+		}
+		else
+		{
+			if (concatData[0] == 0){
+				// Add to current packet
+				// Residue rest to all 1s and reset counter
 				concatData[4+2*concatCounter] = data_temp[0];
 				concatData[5+2*concatCounter] = data_temp[1];
-				concatCounter++;
+				concatCounter = 0;
+				memset(&concatDataTemp,0xFFFF,sizeof(concatDataTemp));	// Reset residue
 			}
-			else concatCounter = 0;
-			break;
-		case CONCAT_RATIO-1:
-			if (abs(concatDeltaTnew - concatDeltaT) < CONCAT_TIMESTAMP_ERROR_MARGIN)
-			{
-				concatData[3] = (uint16_t)concatDeltaT;
-				concatData[4+2*concatCounter] = data_temp[0];
-				concatData[5+2*concatCounter] = data_temp[1];
+			else {
+				// Send without adding current rec to packet
+				// Save current packet as RK0,TS0,D0.. to residue
+				// For next packet, start from counter=1 and use residue as D0
+				memset(&concatDataTemp,0xFFFF,sizeof(concatDataTemp));	// Reset residue
+				concatDataTemp[0]	= (uint16_t)data[0];
+				concatDataTemp[1]	= timeStamp_temp[0];
+				concatDataTemp[2]	= timeStamp_temp[1];
+				concatDataTemp[3] 	= 0;
+				concatDataTemp[4]	= data_temp[0];
+				concatDataTemp[5]	= data_temp[1];
+				concatCounter = 1;
 			}
-			concatCounter = 0;
-			break;
+		}
+		return true;									// send packet at this stage always
+		break;
 	}
-
-	concatLastTimeStamp = data[1];
-
-	if (concatCounter == 0) return true;
-	else return false;
 }
 
 static void nus_concatData_send(ble_nus_t * p_nus){
@@ -502,7 +591,13 @@ ret_code_t nus_eom_send(ble_nus_t * p_nus, uint8_t eomType)
 #ifdef CONCAT_NUS_DATA
 	uint32_t data[] = {0xFFFFFFFF,0xFFFFFFFF,0xFFFFFFFF,0xFFFFFFFF,0xFFFFFFFF};
 	uint8_t dataLengthInBytes = CONCAT_DATA_LEN*2;
+
+	// Send remaining concatenated data before EOM
 	if (concatCounter != 0) nus_concatData_send(p_nus);
+
+	// Reset residue and counter for next sync
+	concatCounter = 0;
+	memset(&concatDataTemp,0xFFFF,sizeof(concatDataTemp));
 
 #else
 	uint32_t data[] = {0,0xFFFFFFFF,0xFFFFFFFF};
@@ -538,11 +633,12 @@ ret_code_t nus_eom_send(ble_nus_t * p_nus, uint8_t eomType)
 		NRF_LOG_ERROR("NUS string send error: %d",ret);
 		return ret;
 	}
-		
-	NRF_LOG_INFO("Data sent over NUS:");
-	for (uint8_t i=0;i<dataLengthInBytes;i++)
-	{
-		NRF_LOG_RAW_INFO("%02x",dataByteArray[i]);
+	else {
+		NRF_LOG_INFO("Data sent over NUS:");
+		for (uint8_t i=0;i<dataLengthInBytes;i++)
+		{
+			NRF_LOG_RAW_INFO("%02x",dataByteArray[i]);
+		}
 	}
 	return ret;
 }
@@ -554,7 +650,6 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 	uint32_t data[] = {0,0,0};
 	uint8_t dataLen;
 	ret_code_t ret = FDS_SUCCESS;
-
 	// Map inbound nusRecKey to a record in the DB
 	if (nusRecKey != FDS_RECORD_KEY_DIRTY)
 	{
@@ -580,7 +675,6 @@ ret_code_t payload_to_central_async (ble_nus_t * p_nus, uint16_t nusRecKey)
 		}
 	}
 	else	{
-		NRF_LOG_DEBUG("Before nus_send\r\n");		//throughput opt
 		ret = nus_dataPacket_send(p_nus, &data[0], dataLen);
 	}
 	return ret;
