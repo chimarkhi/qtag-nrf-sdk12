@@ -7,8 +7,8 @@
 
 #define DYNADV_ADVRATE_MULTIPLE_SLOW				4			// Max adv rate is 10.24s
 #define DEFUALT_ADV_TIMEOUT							0
-#define DYNADV_FAST_MODE_TIMEOUT					60
-#define DYNADV_SLOW_UNCONN_MODE_TIMEOUT				1800
+#define DYNADV_FAST_MODE_TIMEOUT					0x3C
+#define DYNADV_SLOW_UNCONN_MODE_TIMEOUT				0x3FFF
 
 /**@brief Advertising modes
  * @note 
