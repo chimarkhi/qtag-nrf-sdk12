@@ -201,7 +201,7 @@ CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin --short-enums 
 CFLAGS += -DCONCAT_NUS_DATA
 CFLAGS += -DBB_DEVICE
-CFLAGS += -DNRF_LOG_ENABLED=1
+CFLAGS += -DNRF_LOG_ENABLED=0
 #CFLAGS += -DINIT_DEVICE
 
 
