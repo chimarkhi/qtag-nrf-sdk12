@@ -81,6 +81,7 @@ uint32_t get_timeStamp(void)
 	return tstamp_sec;
 }
 
+
 /**@brief Function for the tstamp and record key
  *
  * @details Initializes reckey and tstamp from last record key and timestamp stored in REC_KEY_LASTSEEN.
@@ -265,18 +266,38 @@ uint32_t dynadv_timer_start(uint32_t timeoutTicks)
 
 }
 
+static void get_deviceName(uint8_t * devName, uint8_t devNameLen)
+{
+	uint8_t macid[6];
+	uint8_t i;
+	// sd_ble_gap_address_get(&macid[0]);
+
+	char digit [16] =  		{'0','1','2','3','4','5','6','7',
+							'8','9','A','B','C','D','E','F'};
+	devName[0]	= 'X';
+	devName[1]	= 'T';
+	for (i=2;i<6;i++)
+	{
+		devName[i]	= digit[macid[i]];
+	}
+}
+
 
 static void gap_params_init(void)
 {
-		uint32_t                err_code;
+	uint32_t                err_code;
     ble_gap_conn_params_t   gap_conn_params;
     ble_gap_conn_sec_mode_t sec_mode;
+
+    uint8_t devName[6];
+    get_deviceName(&devName[0],sizeof(devName));
 
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
     err_code = sd_ble_gap_device_name_set(&sec_mode,
                                           (const uint8_t *)DEVICE_NAME,
                                           strlen(DEVICE_NAME));
-		APP_ERROR_CHECK(err_code);
+
+    APP_ERROR_CHECK(err_code);
 
     err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_HEART_RATE_SENSOR_HEART_RATE_BELT);
     APP_ERROR_CHECK(err_code);
@@ -510,7 +531,6 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             if (p_ble_evt->evt.gap_evt.params.timeout.src == BLE_GAP_TIMEOUT_SRC_ADVERTISING)
             {
                	NRF_LOG_DEBUG("Advertising Timeout\r\n");
-            	advMode = DYNADV_ADV_MODE_OFF;
             	advMode = dynamic_advertising_handler(advMode, DYNADV_EVT_ADV_TIMEOUT);
             }
             break; // BLE_GAP_EVT_TIMEOUT
@@ -677,7 +697,7 @@ int main(void)
 	        i,
 	        NRF_GPIO_PIN_DIR_INPUT,
 	        NRF_GPIO_PIN_INPUT_DISCONNECT,
-	        NRF_GPIO_PIN_NOPULL,
+	        NRF_GPIO_PIN_PULLDOWN,
 	        NRF_GPIO_PIN_S0S1,
 	        NRF_GPIO_PIN_NOSENSE);;
 	}

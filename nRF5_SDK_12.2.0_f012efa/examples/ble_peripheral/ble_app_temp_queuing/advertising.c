@@ -12,6 +12,7 @@ static uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH] =                    /**< I
                          // manufacturer specific data in this implementation.
 };
 
+uint8_t unconnPeriodInstance = 0;
 
 
 advertising_mode_t advertising_init()
@@ -193,14 +194,6 @@ advertising_mode_t dynamic_advertising_handler(advertising_mode_t advMode, dynam
 				}
 				else NRF_LOG_ERROR("Failed to start Advertising at button-press, error:%d\r\n", err_code);
 			}
-			else if (advEvent == DYNADV_EVT_ADV_TIMEOUT){
-            	dynadv_timer_stop();				// timer stopped; will be restarted by handler
-				err_code = advertising_start(&advMode, DYNADV_ADV_MODE_SLOW);
-				if (err_code == NRF_SUCCESS) {
-					NRF_LOG_INFO("Started advertising after timeout in mode SLOW CONNECTABLE\r\n");
-				}
-				else NRF_LOG_ERROR("Failed to start Advertising after timeout, error:%d\r\n", err_code);
-			}
 			return advMode;
 
 		case DYNADV_ADV_MODE_SLOW:
@@ -237,6 +230,15 @@ advertising_mode_t dynamic_advertising_handler(advertising_mode_t advMode, dynam
 				advMode = DYNADV_ADV_MODE_OFF_CONN;
 				dynadv_timer_stop();
 				NRF_LOG_INFO("Connected to Client, Advertising stopped\r\n");
+			}
+			else if (advEvent == DYNADV_EVT_ADV_TIMEOUT){
+				advMode = DYNADV_ADV_MODE_OFF;
+				dynadv_timer_stop();				// timer stopped; will be restarted by handler
+				err_code = advertising_start(&advMode, DYNADV_ADV_MODE_SLOW);
+				if (err_code == NRF_SUCCESS) {
+					NRF_LOG_INFO("Started advertising after timeout in mode SLOW CONNECTABLE\r\n");
+				}
+				else NRF_LOG_ERROR("Failed to start Advertising after timeout, error:%d\r\n", err_code);
 			}
 			return advMode;
 				
@@ -275,6 +277,33 @@ advertising_mode_t dynamic_advertising_handler(advertising_mode_t advMode, dynam
 					NRF_LOG_INFO("Stopped advertising @ BUTTON_PRESS in SLOW UNCONNECTABLE\r\n");
 				}
 				else NRF_LOG_ERROR("Failed to stop Advertising @ BUTTON_PRESS , error:%d\r\n", err_code);
+			}
+			else if (advEvent == DYNADV_EVT_ADV_TIMEOUT){
+				advMode = DYNADV_ADV_MODE_OFF;
+            	dynadv_timer_stop();				// timer stopped; will be restarted by handler
+            	// Stay in unconn mode till unconn_timeout*no_of_unconn_periods
+            	if (unconnPeriodInstance<NUMER_OF_UNCONN_PERIODS) {
+            		err_code = advertising_start(&advMode, DYNADV_ADV_MODE_SLOW_UNCONN);
+            		unconnPeriodInstance++;
+    				if (err_code == NRF_SUCCESS) {
+    					NRF_LOG_INFO("Continuing in mode SLOW UNCONNECTABLE\r\n");
+    				}
+    				else {
+    					NRF_LOG_ERROR("Failed to start Advertising after timeout, error:%d\r\n", err_code);
+    					sd_nvic_SystemReset();
+    				}
+            	}
+            	else {
+            		err_code = advertising_start(&advMode, DYNADV_ADV_MODE_SLOW);
+            		unconnPeriodInstance = 0;
+    				if (err_code == NRF_SUCCESS) {
+    					NRF_LOG_INFO("Started advertising after timeout in mode SLOW CONNECTABLE\r\n");
+    				}
+    				else {
+    					NRF_LOG_ERROR("Failed to start Advertising after timeout, error:%d\r\n", err_code);
+    					sd_nvic_SystemReset();
+    				}
+            	}
 			}
 			return advMode;
 
