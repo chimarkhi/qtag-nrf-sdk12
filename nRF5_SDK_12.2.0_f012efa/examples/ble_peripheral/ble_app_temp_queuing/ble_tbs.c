@@ -133,15 +133,13 @@ void tbs_txpower_characteristic_update(ble_tbs_t *p_our_service, int32_t *temper
 // Unused
 uint8_t ble_tbs_get_advinterval(ble_tbs_t * p_tbs)
 {
-	uint32_t err_code;
-
 	uint8_t data_buf;
 	ble_gatts_value_t gatts_buf;
 	gatts_buf.len = 1; 
 	gatts_buf.offset = 0; 
 	gatts_buf.p_value = &data_buf;
 	
-	err_code = sd_ble_gatts_value_get(BLE_CONN_HANDLE_INVALID, p_tbs->char_handles.value_handle, &gatts_buf );
+	uint32_t err_code = sd_ble_gatts_value_get(BLE_CONN_HANDLE_INVALID, p_tbs->char_handles.value_handle, &gatts_buf );
 	//NRF_LOG_DEBUG("char read err %d, value %d",err_code, &gatts_buf.p_value[0]);
 	
 	return data_buf;

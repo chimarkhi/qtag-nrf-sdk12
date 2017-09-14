@@ -29,11 +29,13 @@
 #include "nrf_log.h"
 #include "advertising.h"
 #include "bledb.h"
+#include "ble_dfu.h"
 
 static ble_nus_t                        m_nus;                                      /**< Structure to identify the Nordic UART Service. */
 //static ble_tbs_t						m_tbs;																			/**< Structure to identify the TagBox Service. */
 static uint16_t                         m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
 static nrf_drv_twi_t 					twi = NRF_DRV_TWI_INSTANCE(0);
+static ble_dfu_t m_dfus;                                            /**< Structure used to identify the DFU service. */
 
 
 
@@ -48,8 +50,6 @@ volatile bool gcDone = false;
 volatile bool writeFlag = false;
 sync_type_t syncType = SYNCTYPE_STRAIGHT;
 bool isNUSClient = false;
-
-#define NRF_POWER->RESET =1;
 
 APP_TIMER_DEF(m_advdata_update_timer);
 APP_TIMER_DEF(m_dataToDB_timer);
@@ -289,8 +289,8 @@ static void gap_params_init(void)
     ble_gap_conn_params_t   gap_conn_params;
     ble_gap_conn_sec_mode_t sec_mode;
 
-    uint8_t devName[6];
-    get_deviceName(&devName[0],sizeof(devName));
+    //uint8_t devName[6];
+    //get_deviceName(&devName[0],sizeof(devName));
 
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
     err_code = sd_ble_gap_device_name_set(&sec_mode,
@@ -314,7 +314,30 @@ static void gap_params_init(void)
 
 }
 
+/**@brief 	Function for handling events from DFU service
+ *
+ * @details This function will process the data received from the Nordic UART BLE Service and send
+ *          it to the UART module. **/
+static void ble_dfu_evt_handler(ble_dfu_t * p_dfu, ble_dfu_evt_t * p_evt)
+{
+    switch (p_evt->type)
+    {
+        case BLE_DFU_EVT_INDICATION_DISABLED:
+            NRF_LOG_INFO("Indication for BLE_DFU is disabled\r\n");
+            break;
 
+        case BLE_DFU_EVT_INDICATION_ENABLED:
+            NRF_LOG_INFO("Indication for BLE_DFU is enabled\r\n");
+            break;
+
+        case BLE_DFU_EVT_ENTERING_BOOTLOADER:
+            NRF_LOG_INFO("Device is entering bootloader mode!\r\n");
+            break;
+        default:
+            NRF_LOG_INFO("Unknown event from ble_dfu\r\n");
+            break;
+    }
+}
 
 
 /**@brief Function for handling the data from the Nordic UART Service.
@@ -368,20 +391,29 @@ static uint32_t services_init(void)
 {
     uint32_t       err_code;
     ble_nus_init_t nus_init;
+    ble_dfu_init_t dfus_init;
 
+    // Add Nordic Uart Service to GATT
     memset(&nus_init, 0, sizeof(nus_init));
-
     nus_init.data_handler = nus_data_handler;
-		
-	  // Add Nordic Uart Service to GATT 
-    err_code = ble_nus_init(&m_nus, &nus_init);
+	err_code = ble_nus_init(&m_nus, &nus_init);
     if (err_code != NRF_SUCCESS) return err_code;
 
-		// Add TagBox Service to GATT
-		//err_code = ble_tbs_init(&m_tbs);
-		//if (err_code != NRF_SUCCESS) return err_code;
-		
-		return err_code;
+
+    // Initialize the Device Firmware Update Service.
+    memset(&dfus_init, 0, sizeof(dfus_init));
+    dfus_init.evt_handler                               = ble_dfu_evt_handler;
+    dfus_init.ctrl_point_security_req_write_perm        = SEC_SIGNED;
+    dfus_init.ctrl_point_security_req_cccd_write_perm   = SEC_SIGNED;
+    err_code = ble_dfu_init(&m_dfus, &dfus_init);
+    if (err_code != NRF_SUCCESS) return err_code;
+
+
+	// Add TagBox Service to GATT
+	//err_code = ble_tbs_init(&m_tbs);
+	//if (err_code != NRF_SUCCESS) return err_code;
+
+	return err_code;
 }
 
 /**@brief Function for handling an event from the Connection Parameters Module.
@@ -547,6 +579,36 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 			//ble_tbs_get_advinterval(&m_tbs);
 		}
 			break;
+
+        case BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST:
+        {
+            ble_gatts_evt_rw_authorize_request_t  req;
+            ble_gatts_rw_authorize_reply_params_t auth_reply;
+
+            req = p_ble_evt->evt.gatts_evt.params.authorize_request;
+
+            if (req.type != BLE_GATTS_AUTHORIZE_TYPE_INVALID)
+            {
+                if ((req.request.write.op == BLE_GATTS_OP_PREP_WRITE_REQ)     ||
+                    (req.request.write.op == BLE_GATTS_OP_EXEC_WRITE_REQ_NOW) ||
+                    (req.request.write.op == BLE_GATTS_OP_EXEC_WRITE_REQ_CANCEL))
+                {
+                    if (req.type == BLE_GATTS_AUTHORIZE_TYPE_WRITE)
+                    {
+                        auth_reply.type = BLE_GATTS_AUTHORIZE_TYPE_WRITE;
+                    }
+                    else
+                    {
+                        auth_reply.type = BLE_GATTS_AUTHORIZE_TYPE_READ;
+                    }
+                    auth_reply.params.write.gatt_status = APP_FEATURE_NOT_SUPPORTED;
+                    err_code = sd_ble_gatts_rw_authorize_reply(p_ble_evt->evt.gatts_evt.conn_handle,
+                                                               &auth_reply);
+                    APP_ERROR_CHECK(err_code);
+                }
+            }
+        } break; // BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST
+
 		default:
 			// No implementation needed.
 			break;
@@ -569,6 +631,7 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 //   ble_ias_c_on_ble_evt(&m_ias_c, p_ble_evt);
 //   ble_tps_on_ble_evt(&m_tps, p_ble_evt);
    bsp_btn_ble_on_ble_evt(p_ble_evt);
+   ble_dfu_on_ble_evt(&m_dfus, p_ble_evt);
    on_ble_evt(p_ble_evt);
    ble_advertising_on_ble_evt(p_ble_evt);
 }
@@ -736,6 +799,13 @@ int main(void)
 	advMode = advertising_init();
 	NRF_LOG_INFO("Adv Initialized \n");
 
+	// Wait for fds to be initialized before any read/write
+	err_code =fds_bledb_init();
+	//APP_ERROR_CHECK(err_code);
+	// POLL FOR INIT CALLBACK
+	wait_for_fds_evt(FDS_EVT_INIT);
+
+	//DFU service initialization requires fs_init to be called first. Done by fds_bledb_init()
 	err_code = services_init();
 	if (err_code != NRF_SUCCESS) NRF_LOG_ERROR("Services init error %d\r\n", err_code);
 	//else NRF_LOG_INFO("Services Initialized \n");
@@ -746,11 +816,6 @@ int main(void)
 	err_code = twi_init(&twi);
 	NRF_LOG_INFO("SHT31's I2C Initialized \n");
 
-	// Wait for fds to be initialized before any read/write
-	err_code =fds_bledb_init();
-	//APP_ERROR_CHECK(err_code);
-	// POLL FOR INIT CALLBACK
-	wait_for_fds_evt(FDS_EVT_INIT);
 
 #ifdef INIT_DEVICE
 
@@ -781,17 +846,15 @@ int main(void)
 	NRF_LOG_RAW_INFO("----Device Flash Init Done----\r\n\n\n");
 #endif
 
-	nrf_delay_ms(1000);
+	nrf_delay_ms(200);
 	tstamp_reckey_init();
 
 	// Start execution.
-	nrf_delay_ms(1000);
 	timers_start();
 	NRF_LOG_INFO("Timers Start.. \n");
 
 	// Switch on advertising in SLOW connectable mode
 	advMode = dynamic_advertising_handler(advMode, DYNADV_EVT_BUTTON_PRESS);
-
 	bsp_board_leds_on();
 		
     // Enter main loop.

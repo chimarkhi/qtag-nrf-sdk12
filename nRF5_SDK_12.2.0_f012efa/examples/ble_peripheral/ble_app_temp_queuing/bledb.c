@@ -433,10 +433,13 @@ static bool concat_nus_datapacket(uint32_t * data, uint16_t dataLen)
 			}
 		}
 		return true;									// send packet at this stage always
-		break;
+
+		default:
+			concatCounter = CONCAT_RATIO-1;							// catch all: send data and start a fresh packet
+			memset(&concatDataTemp,0xFFFF,sizeof(concatDataTemp));	// Reset residue
+			return false;
 	}
 }
-
 static void nus_concatData_send(ble_nus_t * p_nus){
 	uint8_t *p_dataPacket = (uint8_t *)concatData;
 	uint32_t ret = ble_nus_string_send(p_nus, p_dataPacket, CONCAT_DATA_LEN*2);

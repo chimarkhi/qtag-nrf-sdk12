@@ -41,6 +41,7 @@ SRC_FILES += \
   $(PROJ_DIR)/battery_level.c		 \
   $(PROJ_DIR)/ble_tbs.c		 \
   $(PROJ_DIR)/advertising.c		 \
+  $(PROJ_DIR)/nrf_dfu_flash_buttonless.c	\
   $(SDK_ROOT)/external/segger_rtt/RTT_Syscalls_GCC.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_printf.c \
@@ -57,7 +58,11 @@ SRC_FILES += \
   $(SDK_ROOT)/components/drivers_nrf/hal/nrf_saadc.c	\
   $(SDK_ROOT)/components/libraries/scheduler/app_scheduler.c \
   $(SDK_ROOT)/components/libraries/timer/app_timer_appsh.c	\
-  
+  $(SDK_ROOT)/components/ble/ble_services/ble_dfu/ble_dfu.c \
+  $(SDK_ROOT)/components/libraries/bootloader/dfu/nrf_dfu_settings.c \
+  $(SDK_ROOT)/components/libraries/crc32/crc32.c \
+  $(SDK_ROOT)/components/libraries/crc16/crc16.c \
+    
 # Include folders common to all targets
 INC_FOLDERS += \
   $(SDK_ROOT)/components/drivers_nrf/comp \
@@ -168,6 +173,10 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/fifo	\
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT	\
   $(SDK_ROOT)/components/libraries/scheduler	\
+  $(SDK_ROOT)/components/ble/ble_services/ble_dfu \
+  $(SDK_ROOT)/components/libraries/bootloader/dfu \
+  $(SDK_ROOT)/components/libraries/crc32 \
+  $(SDK_ROOT)/components/libraries/crc16 \
 
 # Libraries common to all targets
 LIB_FILES += \
@@ -198,10 +207,11 @@ CFLAGS += -Wall -O0 -g3
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 # keep every function in separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
-CFLAGS += -fno-builtin --short-enums 
+CFLAGS += -fno-builtin --short-enums
+CFLAGS += -DNRF_LOG_ENABLED=1
+CFLAGS += -DNRF_DFU_SETTINGS_VERSION=1
 CFLAGS += -DCONCAT_NUS_DATA
-CFLAGS += -DBB_DEVICE
-CFLAGS += -DNRF_LOG_ENABLED=0
+#CFLAGS += -DBB_DEVICE
 #CFLAGS += -DINIT_DEVICE
 
 

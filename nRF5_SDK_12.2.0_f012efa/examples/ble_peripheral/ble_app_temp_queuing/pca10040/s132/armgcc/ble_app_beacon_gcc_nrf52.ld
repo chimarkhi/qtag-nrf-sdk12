@@ -7,10 +7,15 @@ MEMORY
 {
   FLASH (rx) : ORIGIN = 0x1f000, LENGTH = 0x61000
   RAM (rwx) :  ORIGIN = 0x20002138, LENGTH = 0xdec8
+  BOOTLOADER_SETTINGS (rw) : ORIGIN = 0x0007F000, LENGTH = 0x1000
 }
 
 SECTIONS
 {
+  .bootloaderSettings(NOLOAD) :
+  {
+
+  } > BOOTLOADER_SETTINGS
   .fs_data :
   {
     PROVIDE(__start_fs_data = .);
