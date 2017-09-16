@@ -21,7 +21,7 @@ nrfutil pkg generate --application  %app% --application-version 0xff --applicati
 adb wait-for-device push %out_zip% /sdcard/Download/
 
 :flash_device
-if not $1$ == $FLASH_DEVICE$ goto EOF
+if not $%1$ == $FLASH_DEVICE$ goto EOF
 :: start by erasing all
 nrfjprog --eraseall -f nrf52
 

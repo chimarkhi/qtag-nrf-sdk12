@@ -51,6 +51,9 @@ volatile bool writeFlag = false;
 sync_type_t syncType = SYNCTYPE_STRAIGHT;
 bool isNUSClient = false;
 
+char strDeviceName[20];
+char strDeviceName_temp[20];
+
 APP_TIMER_DEF(m_advdata_update_timer);
 APP_TIMER_DEF(m_dataToDB_timer);
 APP_TIMER_DEF(m_tstamp_timer);
@@ -81,6 +84,40 @@ uint32_t get_timeStamp(void)
 	return tstamp_sec;
 }
 
+void device_name_set(void)
+{
+        uint32_t macid_dec;
+
+        macid_dec = NRF_FICR->DEVICEADDR0%100000;
+        macid_dec = NRF_FICR->DEVICEADDR0;
+
+
+
+        sprintf(&strDeviceName_temp[0], "B1%x", macid_dec);
+
+        strDeviceName[0] = 'B';
+        strDeviceName[1] = 'B';
+        for(int i=2;i<=5;i++)
+        {
+         strDeviceName[i] = strDeviceName_temp[i+4];
+
+        /*      if(strDeviceName_temp[i+4]>96 && strDeviceName_temp[i+4]<122)
+                {strDeviceName[i]=strDeviceName[i+4]-32;}
+                else
+                {strDeviceName[i]=strDeviceName[i+4];}
+        */
+        };
+
+
+        NRF_LOG_INFO("Str Name: %s\n",strDeviceName );
+        NRF_LOG_INFO("Str_temp Name: %s\n",strDeviceName_temp );
+
+
+        //DEVICE_NAME = "Test";
+        NRF_LOG_INFO("\r\nMacid value %d\n", macid_dec );
+        NRF_LOG_INFO("\r\nMacid value 0x%02x\n", macid_dec );
+        NRF_LOG_INFO("Device Name: %s\n",DEVICE_NAME );
+}
 
 /**@brief Function for the tstamp and record key
  *
@@ -266,22 +303,6 @@ uint32_t dynadv_timer_start(uint32_t timeoutTicks)
 
 }
 
-static void get_deviceName(uint8_t * devName, uint8_t devNameLen)
-{
-	uint8_t macid[6];
-	uint8_t i;
-	// sd_ble_gap_address_get(&macid[0]);
-
-	char digit [16] =  		{'0','1','2','3','4','5','6','7',
-							'8','9','A','B','C','D','E','F'};
-	devName[0]	= 'X';
-	devName[1]	= 'T';
-	for (i=2;i<6;i++)
-	{
-		devName[i]	= digit[macid[i]];
-	}
-}
-
 
 static void gap_params_init(void)
 {
@@ -289,15 +310,15 @@ static void gap_params_init(void)
     ble_gap_conn_params_t   gap_conn_params;
     ble_gap_conn_sec_mode_t sec_mode;
 
-    //uint8_t devName[6];
-    //get_deviceName(&devName[0],sizeof(devName));
-
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
-    err_code = sd_ble_gap_device_name_set(&sec_mode,
-                                          (const uint8_t *)DEVICE_NAME,
-                                          strlen(DEVICE_NAME));
+        device_name_set();
+    err_code = sd_ble_gap_device_name_set(&sec_mode, (uint8_t *) strDeviceName, strlen(strDeviceName));
 
-    APP_ERROR_CHECK(err_code);
+    if (err_code == NRF_SUCCESS) {
+    	NRF_LOG_INFO("Device Name: %s\n",strDeviceName);
+    }
+    else NRF_LOG_ERROR("GAP Name couldnot be set");
+    //APP_ERROR_CHECK(err_code);
 
     err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_HEART_RATE_SENSOR_HEART_RATE_BELT);
     APP_ERROR_CHECK(err_code);
